@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡⚡ HT-RE</title>
+    <!-- ACE EDITOR CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.js"></script>
+    <!-- MODULAR CSS -->
+    <link rel="stylesheet" href="static/css/main.css">
+    <link rel="stylesheet" href="static/css/modal.css">
+    <link rel="stylesheet" href="static/css/patch.css">
+</head>
+<body>
+
+    <div class="top-bar">
+        <h1>⚡⚡ HT-RE</h1>
+        
+        <div class="history-dropdown" id="historyDropdown">
+            <button class="history-btn" onclick="toggleHistory()">-- History --</button>
+            <div class="history-menu" id="historyMenu"></div>
+        </div>
+
+        <input type="text" id="binaryPath" placeholder="/path/to/binary" style="width: 300px;" onkeydown="if(event.key==='Enter') loadBinary()">
+        <button onclick="loadBinary()">LOAD</button>
+        <button class="export-btn" onclick="openExportModal()">Export JSON</button>
+        <span id="statusLabel" style="color:#aaa; font-size: 0.85em; margin-left: auto;">No file loaded</span>
+    </div>
+
+    <div class="workspace">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>📂 FUNCTIONS</h3>
+                <button id="btnDecompAll" class="btn-decomp-all" onclick="startBatchDecomp()" title="Run Ghidra batch decompilation on all functions">⚡ Decompile All</button>
+            </div>
+            <div style="padding: 5px; background: #0a0a0a; border-bottom: 1px solid #333; display: flex; flex-direction: column; gap: 5px;">
+                <input type="text" id="funcSearch" class="func-search" placeholder="Search functions..." onkeyup="filterFunctions()" style="border: none;">
+                <button id="btnShowAll" class="btn-decomp-all" onclick="showAllDecompiled()" style="width: 100%; background: #444; color: #fff;">Show All in One (C/C++)</button>
+            </div>
+            <div id="funcList" class="func-list"></div>
+            <div class="options-panel">
+                <h3>Options</h3>
+                <label>Arch:
+                    <select id="opt-arch" onchange="loadDisasm()">
+                        <option value="x86-64">x86 / x86-64</option>
+                        <option value="arm">ARM</option>
+                        <option value="aarch64">AArch64</option>
+                    </select>
+                </label>
+                <label>Target:
+                    <select id="opt-sections" onchange="loadDisasm()">
+                        <option value="text">.text section only</option>
+                        <option value="all" selected>All sections (-D)</option>
+                    </select>
+                </label>
+                <label>Syntax:
+                    <select id="opt-syntax" onchange="loadDisasm()">
+                        <option value="intel">Intel</option>
+                        <option value="att">AT&T</option>
+                    </select>
+                </label>
+                <label><input type="checkbox" id="opt-raw" onchange="loadDisasm()"> Show Raw Opcodes</label>
+                <label><input type="checkbox" id="opt-raw-bin" onchange="loadDisasm()"> Raw Binary Mode (x86-64)</label>
+            </div>
+        </div>
+        
+        <div class="resizer" id="resizer"></div>
+        
+        <div class="main-view">
+            <div class="toolbar">
+                <button id="btnBack" onclick="goBack()" disabled title="Go back">◀</button>
+                <span style="border-left: 1px solid #444; height: 20px; margin: 0 5px;"></span>
+                <button class="tab-btn" onclick="runCmd('readelf-h', 'header')">Header / Info</button>
+                <button class="tab-btn" onclick="runCmd('readelf-S', 'sections')">Sections</button>
+                <button class="tab-btn active" onclick="loadDisasm()">Disassembly</button>
+                <button class="tab-btn" onclick="runCmd('hexdump', 'hexdump')">Hex Dump</button>
+                <button class="tab-btn" onclick="runCmd('objdump-R', 'relocs')">Relocs</button>
+                <button class="tab-btn" onclick="runCmd('strings', 'strings')">Strings</button>
+                <button class="tab-btn" onclick="loadFoundStrings()">Found Strings</button>
+                <button class="tab-btn patch-btn" onclick="showPatchUI()">Patch/Find (binpatch)</button>
+            </div>
+            
+            <div id="bar-jump" class="sub-toolbar">
+                Jump Address/Offset: <input type="text" id="jumpInput" placeholder="e.g. 0x4011cd" onkeydown="if(event.key==='Enter') executeJump()">
+                <button onclick="executeJump()">Go</button>
+            </div>
+            
+            <div id="bar-search" class="sub-toolbar">
+                Search text/hex: <input type="text" id="searchInput" placeholder="Find..." onkeydown="if(event.key==='Enter') executeSearch()">
+                <label class="inline-check" style="color:#aaa;"><input type="checkbox" id="searchCaseSensitive"> Case Sensitive</label>
+                <button onclick="executeSearch()">Find Next</button>
+                <button id="btnFindAll" onclick="executeFindAll()" style="color: #55aaff;">Find All</button>
+            </div>
+
+            <div id="output" class="output-container"></div>
+            
+            <div id="findAllPanel">
+                <div class="resizer-right" id="resizerRight"></div>
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                    <div style="background:var(--primary); color:#000; padding:10px; font-weight:bold; display:flex; justify-content:space-between;">
+                        Search Results <span style="cursor:pointer;" onclick="document.getElementById('findAllPanel').style.display='none'">[X]</span>
+                    </div>
+                    <div id="findAllList" style="flex:1; overflow-y:auto; padding: 5px;"></div>
+                </div>
+            </div>
+            
+            <div id="contextMenu" class="context-menu"></div>
+            
+            <div id="patchPanel" class="bp-container">
+                <div class="bp-header">
+                    <h2 style="color: var(--primary); margin: 0;">binpatch Interface</h2>
+                    <span style="color: #888; font-size: 0.9em;">Binary Patching & Heuristic Tool</span>
+                </div>
+                <div class="bp-tabs">
+                    <div class="bp-tab active" onclick="switchBpTab('write')">Write / Patch</div>
+                    <div class="bp-tab" onclick="switchBpTab('find')">Search / Find</div>
+                    <div class="bp-tab" onclick="switchBpTab('resolve')">Disassemble (-d)</div>
+                </div>
+                <div id="bp-write" class="bp-panel active">
+                    <div class="bp-group"><label>Offset or VAddr (-o / -va)</label><input type="text" id="bp-w-offset" placeholder="e.g. 112b or 0x4011cd"></div>
+                    <div class="bp-group"><label>Hex Bytes (-h)</label><input type="text" id="bp-w-hex" placeholder="e.g. 90 90 cb 10"></div>
+                    <div class="bp-group">
+                        <label class="inline-check"><input type="checkbox" id="bp-w-backup" checked> Backup (-b)</label>
+                        <label class="inline-check"><input type="checkbox" id="bp-w-isva" checked> Treat as VAddr (-va)</label>
+                    </div>
+                    <button class="bp-run-btn" onclick="runBinpatch('write')">APPLY PATCH</button>
+                </div>
+                <div id="bp-find" class="bp-panel">
+                    <div class="bp-group"><label>Hex Pattern to Find</label><div style="display:flex; gap: 5px;"><input type="text" id="bp-f-hex" placeholder="e.g. cb 10 00 00 05"><button onclick="strToHex()">Txt ➡ Hex</button></div></div>
+                    <div class="bp-group">
+                        <label class="inline-check"><input type="radio" name="bp-f-type" value="exact" checked="checked"> Exact Find (-f)</label>
+                        <label class="inline-check"><input type="radio" name="bp-f-type" value="heuristic"> Heuristic Find (-fh)</label>
+                    </div>
+                    <div class="bp-group" style="display:flex; gap: 15px;">
+                        <div><label>Limit (-s)</label><input type="text" id="bp-f-size" value="5" style="width: 80px;"></div>
+                        <div style="padding-top: 25px;"><label class="inline-check"><input type="checkbox" id="bp-f-all"> Show All (-a)</label></div>
+                    </div>
+                    <button class="bp-run-btn" onclick="runBinpatch('find')">SEARCH</button>
+                </div>
+                <div id="bp-resolve" class="bp-panel">
+                    <div class="bp-group">
+                        <label>Target Type</label>
+                        <label class="inline-check"><input type="radio" name="bp-r-type" value="manual" onchange="toggleBpTarget()" checked> Custom Offset/VAddr</label>
+                        <label class="inline-check"><input type="radio" name="bp-r-type" value="main" onchange="toggleBpTarget()"> Main (-m)</label>
+                        <label class="inline-check"><input type="radio" name="bp-r-type" value="entry" onchange="toggleBpTarget()"> Entry Point (-e)</label>
+                    </div>
+                    <div class="bp-group" id="bp-r-target-box">
+                        <label>Target Address / Symbol</label>
+                        <input type="text" id="bp-r-target" placeholder="e.g. 112b or 0x4011cd">
+                        <label class="inline-check" style="margin-top:5px;"><input type="checkbox" id="bp-r-isva" checked> Treat as VAddr (-va)</label>
+                    </div>
+                    <div class="bp-group"><label>Limit Instructions (-s)</label><input type="text" id="bp-r-size" placeholder="Defaults to 1 (unless -r is used)"></div>
+                    <div class="bp-group"><label class="inline-check"><input type="checkbox" id="bp-r-return" checked> Stream Until Return (-r)</label></div>
+                    <button class="bp-run-btn" onclick="runBinpatch('resolve')">DISASSEMBLE</button>
+                </div>
+                <div id="bp-output" class="bp-output">Output will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FUNCTION VIEW MODAL -->
+    <div id="funcModal" class="modal">
+        <div class="modal-header" id="modalHeader">
+            <div class="modal-title-wrap">
+                <span id="modalTitle">Function View</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-shrink: 0;">
+                <div id="editorControls" style="display:none; gap: 5px; align-items: center;">
+                    <button onclick="restoreOriginalDecomp()" style="padding: 2px 7px; font-size: 0.8em; background:#333; color:#aaa;" title="Restore original Ghidra C/C++ output">Restore</button>
+                    <span style="border-left: 1px solid #000; height: 16px; margin: 0 2px;"></span>
+                    <button onclick="changeFontSize(-1)" style="padding: 2px 7px; font-size: 0.8em;" title="Zoom Out">A-</button>
+                    <button onclick="changeFontSize(1)" style="padding: 2px 7px; font-size: 0.8em;" title="Zoom In">A+</button>
+                    <span style="border-left: 1px solid #000; height: 16px; margin: 0 2px;"></span>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button id="btnModalAsm" class="tab-btn active" onclick="switchModalView('asm')" style="padding: 2px 8px; font-size: 0.8em;">ASM</button>
+                    <button id="btnModalDecomp" class="tab-btn" onclick="switchModalView('decomp')" style="padding: 2px 8px; font-size: 0.8em;">Decompile...</button>
+                </div>
+                <span style="cursor: pointer; padding-left: 10px;" onclick="closeFuncModal()">[X]</span>
+            </div>
+        </div>
+        <div class="modal-tabs-container" id="modalTabsContainer"></div>
+        <div id="modalContent" class="modal-body"></div>
+        <div id="modalEditor" style="display:none; flex:1; width:100%;"></div>
+    </div>
+
+    <!-- EXPORT JSON MODAL -->
+    <div id="exportModal" class="modal" style="width:850px; height:600px;">
+        <div class="modal-header" id="exportHeader">
+            <span>Export JSON Settings</span>
+            <span style="cursor: pointer;" onclick="document.getElementById('exportModal').style.display='none'">[X]</span>
+        </div>
+        <div style="background: #151515; padding: 10px; border-bottom: 1px solid #333; text-align:center;">
+            <button onclick="masterExportSelectAll()" style="background: var(--primary); color:#000; width:50%; font-size:1.1em; padding: 8px;">SELECT ALL (MAX DUMP)</button>
+        </div>
+        <div style="display: flex; flex: 1; overflow: hidden; background: #0a0a0a;">
+            <div class="export-col" style="border-right: 1px solid #333; flex: 1;">
+                <h3 style="color:var(--primary); margin-top:0;">General Settings</h3>
+                <label class="export-label" style="cursor:default;">Filename:
+                    <input type="text" id="exp-filename" style="width:100%; margin-top:5px;" value="export.json">
+                </label>
+                <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
+                
+                <label class="export-label"><input type="checkbox" id="exp-header" checked> Header & Info</label>
+                <label class="export-label"><input type="checkbox" id="exp-sections" checked> Sections</label>
+                <label class="export-label"><input type="checkbox" id="exp-found-strings" checked> Found Strings</label>
+                <label class="export-label"><input type="checkbox" id="exp-all-strings"> All Raw Strings</label>
+                
+                <div style="margin-top: 15px; padding: 10px; background: #111; border: 1px solid #333;">
+                    <label style="font-weight:bold; color:var(--primary); margin-bottom:5px; display:block;">
+                        <input type="checkbox" id="exp-hexdump"> Hex Dump
+                    </label>
+                    <div style="display:flex; gap: 10px; align-items:center;">
+                        <span>From:</span><input type="text" id="exp-hex-from" placeholder="e.g. 0x100" style="width:100px; font-size:0.85em;">
+                        <span>To:</span><input type="text" id="exp-hex-to" placeholder="e.g. 0x200" style="width:100px; font-size:0.85em;">
+                    </div>
+                    <div style="color:#666; font-size:0.8em; margin-top:5px;">(Leave blank to dump the entire file)</div>
+                </div>
+
+                <div style="margin-top: 15px; padding: 10px; background: #111; border: 1px solid #333;">
+                    <label style="font-weight:bold; color:var(--primary); margin-bottom:5px; display:block;">
+                        <input type="checkbox" id="exp-binpatch"> Custom Binpatch Execution
+                    </label>
+                    <input type="text" id="exp-binpatch-cmd" placeholder="e.g. -m -d -r" style="width:100%; font-size:0.85em;">
+                </div>
+            </div>
+            
+            <div class="export-col" style="flex: 1.5;">
+                <h3 style="color:var(--primary); margin-top:0;">Include Functions</h3>
+                
+                <!-- NEW GRANULAR BUTTONS -->
+                <div style="margin-bottom: 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button onclick="toggleExportFuncs(true)">All</button>
+                    <button onclick="toggleExportFuncs(false)">None</button>
+                    <span style="border-left: 1px solid #444; height: 20px; margin: 0 5px;"></span>
+                    <button onclick="toggleExportType('asm', true)">All ASM</button>
+                    <button onclick="toggleExportType('asm', false)">None ASM</button>
+                    <span style="border-left: 1px solid #444; height: 20px; margin: 0 5px;"></span>
+                    <button onclick="toggleExportType('c', true)">All <span class="dyn-c-lang">C</span></button>
+                    <button onclick="toggleExportType('c', false)">None <span class="dyn-c-lang">C</span></button>
+                </div>
+                
+                <div style="display:flex; font-size:0.8em; color:#888; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom: 5px;">
+                    <span style="flex:1; margin-left: 5px;">Function</span>
+                    <span style="width:50px; text-align:center;">ASM</span>
+                    <span style="width:50px; text-align:center;" class="dyn-c-lang">C</span>
+                </div>
+                <div id="exp-func-list" style="flex:1; overflow-y:auto; background:#111; border:1px solid #333; padding:5px;"></div>
+            </div>
+        </div>
+        <div style="padding:15px; border-top: 1px solid #333; text-align:right; background: #151515;">
+            <button id="btnExecuteExport" onclick="executeExport()" style="background: #55aaff; color:#000; padding:10px 25px; font-weight:bold; font-size:1.1em;">Download JSON</button>
+        </div>
+    </div>
+
+    <!-- MODULAR JAVASCRIPT FILES (IN PROPER LOAD ORDER) -->
+    <script src="static/js/state.js"></script>
+    <script src="static/js/scroller.js"></script>
+    <script src="static/js/functions.js"></script>
+    <script src="static/js/disassembly.js"></script>
+    <script src="static/js/ghidra.js"></script>
+    <script src="static/js/modal.js"></script>
+    <script src="static/js/strings.js"></script>
+    <script src="static/js/export.js"></script>
+    <script src="static/js/patch.js"></script>
+    <script src="static/js/binary_loader.js"></script>
+    <script src="static/js/main.js"></script>
+</body>
+</html>
