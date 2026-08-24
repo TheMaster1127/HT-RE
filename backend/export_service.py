@@ -1,7 +1,6 @@
 import os
 import re
-import tempfile
-from backend.utils import validate, run_cmd, get_objdump_cmd, find_ghidra_headless
+from backend.utils import validate, run_cmd, get_objdump_cmd, get_file_hash, load_decomp_cache
 from backend.disasm_service import resolve_strings
 
 def handle_export(path, opts, cfg):
@@ -13,11 +12,15 @@ def handle_export(path, opts, cfg):
         'options_used': opts
     }
 
+    # Detect C vs C++ to dynamically name the JSON key
+    out_file, _, _ = run_cmd(f'file "{path}"')
+    out_ldd, _, _ = run_cmd(f'ldd "{path}"')
+    out_d, _, _ = run_cmd(f'readelf -d "{path}"')
+    is_cpp = "libstdc++" in out_d or "C++" in out_file
+
     if cfg.get('header'):
         out_ls, _, _ = run_cmd(f'ls -lh "{path}"')
         out_stat, _, _ = run_cmd(f'stat "{path}"')
-        out_file, _, _ = run_cmd(f'file "{path}"')
-        out_ldd, _, _ = run_cmd(f'ldd "{path}"')
         out_h, _, _ = run_cmd(f'readelf -h "{path}"')
         link_status = "Unknown"
         if "statically linked" in out_file:
@@ -54,7 +57,7 @@ def handle_export(path, opts, cfg):
                 instr, target = m.group(1), int(m.group(2), 16)
                 resolved = str_map.get(target) or str_map.get(target - 0x400000)
                 if resolved:
-                    found_strings.append({'addr': instr, 'string': resolved})
+                    found_strings.append({'addr': hex(int(instr, 16)), 'string': resolved})
         export_data['found_strings'] = found_strings
 
     requested_funcs_asm = cfg.get('functions_asm', [])
@@ -72,7 +75,7 @@ def handle_export(path, opts, cfg):
                     extracted[current_func] = '\n'.join(func_code)
                 addr = m.group(1).lstrip('0') or '0'
                 if addr in target_set:
-                    current_func = f"{addr} ({m.group(2)})"
+                    current_func = f"0x{addr} ({m.group(2)})"
                     func_code = [line]
                 else:
                     current_func = None
@@ -88,24 +91,38 @@ def handle_export(path, opts, cfg):
 
     requested_funcs_c = cfg.get('functions_c', [])
     if requested_funcs_c:
-        ghidra_bin = find_ghidra_headless()
-        script_path = os.path.abspath("DecompileAll.java")
-        if ghidra_bin and os.path.exists(script_path):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                script_dir = os.path.dirname(script_path)
-                cmd = f'"{ghidra_bin}" "{tmpdir}" temp_proj -import "{path}" -scriptPath "{script_dir}" -postScript DecompileAll.java -deleteProject'
-                out, _, _ = run_cmd(cmd)
+        # Pull directly from our blazing fast background cache instead of re-running Ghidra
+        file_hash = get_file_hash(path)
+        decomp_cache = load_decomp_cache(file_hash)
+        
+        c_results = {}
+        
+        # Build an address-to-name map so the JSON keys look beautiful: "0x4011e0 (main)"
+        nm_out, _, _ = run_cmd(f'nm -n -S --defined-only "{path}"')
+        name_map = {}
+        for line in nm_out.splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    # Find the symbol type (usually 'T' or 't' for text/functions)
+                    idx = next((i for i, p in enumerate(parts) if len(p) == 1 and p.upper() == 'T'), -1)
+                    if idx > 0 and idx + 1 < len(parts):
+                        clean_addr = parts[0].lstrip('0') or '0'
+                        name_map[clean_addr] = parts[idx + 1]
+                except Exception:
+                    pass
 
-                c_results = {}
-                pattern = re.compile(r'=== FUNC_START:([0-9a-fA-F]+):([^\s=]+) ===\s*(.*?)\s*=== FUNC_END ===', re.DOTALL)
-                for match in pattern.finditer(out):
-                    clean_addr = match.group(1).lstrip('0') or '0'
-                    if clean_addr in set(requested_funcs_c):
-                        code_raw = match.group(3).strip()
-                        clean_lines = [re.sub(r'^.*?INFO\s+DecompileAll\.java>\s*', '', l) for l in code_raw.splitlines() if '(GhidraScript)' not in l and not l.strip().startswith(('INFO ', 'WARN '))]
-                        c_results[f"{clean_addr} ({match.group(2)})"] = '\n'.join(clean_lines).strip()
-
-                export_data['decompiled_c'] = c_results
+        for addr in requested_funcs_c:
+            name = name_map.get(addr, "unknown_function")
+            key = f"0x{addr} ({name})"
+            if addr in decomp_cache:
+                c_results[key] = decomp_cache[addr]
+            else:
+                c_results[key] = f"// [HT-RE] Code not found in cache for {addr}.\n// Please decompile this function in the web UI first, then re-export."
+        
+        # Dynamically set the JSON key based on the detected language
+        lang_key = "decompiled_cpp" if is_cpp else "decompiled_c"
+        export_data[lang_key] = c_results
 
     if cfg.get('hexdump'):
         hex_start = cfg.get('hex_from', '').strip()
