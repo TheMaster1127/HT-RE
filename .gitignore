@@ -6,6 +6,7 @@ history.json
 
 # Background SHA-256 Ghidra decompilation cache
 .htre_cache/
+.htre_uploads
 
 # -----------------------------
 # Python Artifacts
