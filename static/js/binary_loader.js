@@ -36,7 +36,15 @@ async function loadBinary() {
         document.getElementById('statusLabel').innerHTML = `Working: <span style="color:#fff;">${binaryPath}</span> [${data.arch}]`;
         renderHistoryUI(data.history);
         document.getElementById('opt-arch').value = data.arch;
+        if(document.getElementById('asm-arch')) document.getElementById('asm-arch').value = data.arch;
         
+        // Reset the Dis/Assembler state since we loaded an entirely new binary
+        if(document.getElementById('asm-input')) {
+            document.getElementById('asm-input').value = '';
+            document.getElementById('asm-hex').value = '';
+            document.getElementById('asm-output').innerText = 'Output will appear here...';
+        }
+
         currentFileHash = data.file_hash || '';
         
         // Reset and apply backend cache to local session state

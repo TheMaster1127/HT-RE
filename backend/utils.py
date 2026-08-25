@@ -56,6 +56,24 @@ def get_objdump_cmd(arch):
             return 'arm-linux-gnueabihf-objdump'
     return 'objdump'
 
+def get_as_cmd(arch):
+    if arch == 'aarch64':
+        if os.system('which aarch64-linux-gnu-as > /dev/null 2>&1') == 0:
+            return 'aarch64-linux-gnu-as'
+    elif arch == 'arm':
+        if os.system('which arm-linux-gnueabihf-as > /dev/null 2>&1') == 0:
+            return 'arm-linux-gnueabihf-as'
+    return 'as'
+
+def get_objcopy_cmd(arch):
+    if arch == 'aarch64':
+        if os.system('which aarch64-linux-gnu-objcopy > /dev/null 2>&1') == 0:
+            return 'aarch64-linux-gnu-objcopy'
+    elif arch == 'arm':
+        if os.system('which arm-linux-gnueabihf-objcopy > /dev/null 2>&1') == 0:
+            return 'arm-linux-gnueabihf-objcopy'
+    return 'objcopy'
+
 def find_ghidra_headless():
     which_path = shutil.which("analyzeHeadless")
     if which_path:

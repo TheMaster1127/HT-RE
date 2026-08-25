@@ -1,4 +1,5 @@
 function showPatchUI() { updateTabs('patch'); }
+function showAsmUI() { updateTabs('asm'); }
 
 function switchBpTab(tab) {
     document.querySelectorAll('.bp-tab').forEach(el => el.classList.remove('active'));
@@ -55,4 +56,46 @@ async function runBinpatch(mode) {
     const res = await fetch(`${API}/binpatch`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
     document.getElementById('bp-output').innerText = data.output || data.error;
+}
+
+async function convertAsmToHex() {
+    const asm = document.getElementById('asm-input').value;
+    const arch = document.getElementById('asm-arch').value;
+    if (!asm) return alert("Please enter assembly code.");
+
+    document.getElementById('asm-output').innerText = "Assembling...";
+    const res = await fetch(`${API}/assemble`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asm: asm, arch: arch })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+        document.getElementById('asm-output').innerText = data.error;
+    } else {
+        document.getElementById('asm-hex').value = data.hex;
+        document.getElementById('asm-output').innerText = data.output;
+    }
+}
+
+async function convertHexToAsm() {
+    const hex = document.getElementById('asm-hex').value;
+    const arch = document.getElementById('asm-arch').value;
+    if (!hex) return alert("Please enter hex bytes.");
+
+    document.getElementById('asm-output').innerText = "Disassembling...";
+    const res = await fetch(`${API}/disassemble_raw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hex: hex, arch: arch })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+        document.getElementById('asm-output').innerText = data.error;
+    } else {
+        document.getElementById('asm-input').value = data.asm;
+        document.getElementById('asm-output').innerText = data.output;
+    }
 }

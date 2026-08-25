@@ -21,8 +21,11 @@ function updateTabs(activeTab) {
         if (btnBack) btnBack.disabled = true;
     }
 
-    document.getElementById('output').style.display = activeTab === 'patch' ? 'none' : 'block';
+    document.getElementById('output').style.display = (activeTab === 'patch' || activeTab === 'asm' || activeTab === 'conv' || activeTab === 'ascii') ? 'none' : 'block';
     document.getElementById('patchPanel').style.display = activeTab === 'patch' ? 'flex' : 'none';
+    document.getElementById('asmPanel').style.display = activeTab === 'asm' ? 'flex' : 'none';
+    document.getElementById('convPanel').style.display = activeTab === 'conv' ? 'flex' : 'none';
+    document.getElementById('asciiPanel').style.display = activeTab === 'ascii' ? 'flex' : 'none';
     document.getElementById('findAllPanel').style.display = 'none';
     
     document.getElementById('bar-jump').style.display = (activeTab === 'disasm' || activeTab === 'hexdump') ? 'flex' : 'none';
@@ -31,7 +34,7 @@ function updateTabs(activeTab) {
     if(activeTab === 'disasm' || activeTab === 'hexdump') document.getElementById('jumpInput').placeholder = activeTab === 'hexdump' ? "e.g. 0x112b" : "e.g. 0x4011cd";
 
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7 };
+    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7, 'asm': 8, 'conv': 9, 'ascii': 10 };
     if(activeTab in btnMap) document.querySelectorAll('.tab-btn')[btnMap[activeTab]].classList.add('active');
 }
 

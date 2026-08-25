@@ -6,7 +6,7 @@
 
 1. [Introduction](#introduction)
 2. [Why Use HT-RE?](#why-use-ht-re)
-3. [Features](#features)
+3. [Massive Features Arsenal](#massive-features-arsenal)
 4. [Dependencies & Prerequisites](#dependencies--prerequisites)
 5. [Installing `binpatch` (Required Dependency)](#installing-binpatch-required-dependency)
 6. [Installation & Setup](#installation--setup)
@@ -19,26 +19,32 @@
 
 `HT-RE` is a blazing-fast, dependency-light, web-based Graphical User Interface for Reverse Engineering and Binary Patching. Designed natively for Linux, it acts as an IDE-like wrapper that seamlessly integrates standard GNU utilities (`objdump`, `readelf`, `xxd`, `strings`), the Ghidra Headless Decompiler, and the `binpatch` utility into a single, cohesive browser application. 
 
-Instead of opening massive, resource-heavy Java GUIs, `HT-RE` lets you dissect, decompile, and patch ELF binaries directly from your browser with mathematical precision and SHA-256 caching.
+Instead of opening massive, resource-heavy Java GUIs, `HT-RE` lets you dissect, decompile, patch, convert strings, translate CPU memory, and calculate hex jumps directly from your browser with mathematical precision and permanent SHA-256 caching.
 
 ---
 
 ## Why Use HT-RE?
 
-Traditional reverse engineering workflows often require juggling a terminal, a hex editor, a disassembler, and a decompiler simultaneously. `HT-RE` bridges this gap:
+Traditional reverse engineering workflows often require juggling a terminal, a hex editor, a disassembler, a separate math calculator, an ASCII reference, and a decompiler simultaneously. `HT-RE` bridges this gap entirely:
 - **Instant Context:** Click a memory address in the `Header` or `Strings` view and instantly jump to that exact instruction in the `Disassembly` tab.
 - **Headless Power:** Uses Ghidra entirely in the background. It extracts the C/C++ decompilation and caches it permanently using the binary's SHA-256 hash. If you restart the server, your decompiled functions load instantly.
-- **Safe Patching:** Features a visual frontend for the `binpatch` tool, allowing you to search for heuristic byte patterns, resolve Entry Points, and inject raw Hex directly into the binary with automatic backups.
+- **All-in-One Data Arsenal:** Features a dedicated calculation tab with endless spawnable Reverse Engineering Scientific Calculators, Unicode String conversions, and physical memory Endian swappers.
 
 ---
 
-## Features
+## Massive Features Arsenal
 
-- **Dynamic C/C++ Detection:** Automatically parses ELF headers to detect C vs C++ binaries and adjusts the UI/Decompiler context accordingly.
 - **"All In One" Decompilation:** Stitches all Ghidra-decompiled C/C++ functions into a single, massive ACE Editor view (putting `main` at the bottom) for easy reading.
-- **Smart Viewport History:** Tracks exactly what line address you click on. The "Go Back" button mathematically recalculates your viewport to snap you back to the exact instruction you were reading.
-- **Granular JSON Export:** Max-dump your entire reversing session (Headers, Hex dumps, Found Strings, Assembly, and C/C++ code) into a single JSON file for offline analysis.
-- **Multi-Tabbed Modal UI:** Open multiple functions simultaneously in a draggable, IDE-style window with syntax highlighting and zoom controls.
+- **Dis/Assembler Tool:** Because ARM and AArch64 bytes are impossible to hand-edit blindly, the built-in Dis/Assembler allows you to convert `mov r1, #55` natively into hex bytes (`e3 a0 10 37`) without ever leaving the browser.
+- **Infinite RE Calculators:** Spawn infinite calculators side-by-side. Featuring:
+  - Base translation outputs (Dec, Hex, Bin).
+  - Native space-insensitive Hex interpretation (e.g. `FF + FF` evaluates successfully).
+  - CPU-accurate bit-width bounding (`8-bit`, `16-bit`, `32-bit`, `64-bit`).
+  - Standard bitwise operators (AND, OR, XOR, LSH, RSH, NOT) and custom functions (`bswap32`, `rol`, `ror`).
+- **Memory Type & Float Conversions:** Real-time space-insensitive conversion between Hex, Int8/16/32/64, Unsigned constraints, and Float16/32/64 representations.
+- **Multi-Encoding Strings:** Instantly decode raw hex dumps into UTF-8, UTF-16LE (Windows Wide), or ANSI, fully supporting Emojis and Unicode bullets.
+- **Full-Screen ASCII Table:** A built-in top-to-bottom 3-column reference sheet for all 256 Extended and Control ASCII characters.
+- **Relative Jump Calculator:** Type your current offset and Target address, and calculate the exact memory relative jump required.
 
 ---
 

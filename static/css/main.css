@@ -49,6 +49,15 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .tab-btn.patch-btn { color: var(--primary); border-color: var(--primary); }
 .tab-btn.patch-btn.active { color: #000; background: var(--primary); border-color: var(--primary); }
 
+.tab-btn.asm-btn { color: #55aaff; border-color: #55aaff; }
+.tab-btn.asm-btn.active { color: #000; background: #55aaff; border-color: #55aaff; }
+
+.tab-btn.conv-btn { color: #ffeb73; border-color: #ffeb73; }
+.tab-btn.conv-btn.active { color: #000; background: #ffeb73; border-color: #ffeb73; }
+
+.tab-btn.ascii-btn { color: #ff3333; border-color: #ff3333; }
+.tab-btn.ascii-btn.active { color: #000; background: #ff3333; border-color: #ff3333; }
+
 .output-container { flex: 1; overflow: auto; padding: 0 10px; white-space: pre; font-size: 0.9em; line-height: 20px; position: relative; }
 .output-line { height: 20px; display: block; white-space: pre; }
 .highlight { background: rgba(255, 102, 0, 0.4); border-left: 3px solid var(--primary); padding-left: 5px; margin-left: -8px; color: #fff; }
@@ -65,3 +74,34 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .hx-f { color: #55aaff; }
 .hx-b { color: #0f0; }
 .hx-a { color: #00ff00; }
+
+.conv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+.conv-box { background: #111; border: 1px solid var(--border); padding: 15px; }
+.conv-box h3 { color: #ffeb73; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 1em; }
+.int-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;}
+
+.clear-data-btn { background: #ff3333; color: #fff; border: 1px solid #ff3333; font-size: 0.85em; padding: 4px 8px; cursor: pointer; }
+.clear-data-btn:hover { background: #ff6666; color: #000; border-color: #ff6666; }
+
+/* Scientific Calculator Styles */
+.calc-instance { background: #050505; padding: 15px; border: 1px solid #333; border-radius: 5px; min-width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+.calc-history { background: #000; color: #aaa; border: 1px solid #222; height: 60px; overflow-y: auto; margin-bottom: 5px; font-size: 0.8em; padding: 5px; }
+.calc-hist-item { cursor: pointer; padding: 2px; user-select: text; }
+.calc-hist-item:hover { background: #222; color: #fff; }
+.calc-screen { width: 100%; height: 50px; background: #000; color: #0f0; font-size: 1.5em; text-align: right; margin-bottom: 10px; border: 1px solid #444; padding: 10px; font-family: monospace; outline: none; }
+.calc-screen:focus { border-color: #55aaff; }
+.calc-grid-sci { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.calc-btn { background: #1a1a1a; color: #fff; font-size: 1.1em; padding: 10px 0; border: 1px solid #333; cursor: pointer; border-radius: 3px; font-family: inherit; }
+.calc-btn:hover { background: #333; border-color: #55aaff; }
+.calc-btn-op { background: #222; color: #55aaff; font-size: 0.9em; }
+.calc-btn-bit { background: #2a2010; color: #ffeb73; font-size: 0.9em; }
+.calc-btn-eq { background: #ffeb73; color: #000; font-weight: bold; border-color: #ffeb73; }
+.calc-btn-eq:hover { background: #fff59d; border-color: #fff59d; }
+
+/* ASCII Table Styles */
+.ascii-row { display: grid; grid-template-columns: 35px 35px 35px 45px minmax(0, 1fr); gap: 5px; padding: 3px 5px; border-bottom: 1px solid #222; }
+.ascii-row:hover { background: #222; }
+.ascii-header { font-weight: bold; color: #ff3333; border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 5px; background: #111; }
+.ascii-ctrl { color: #ffeb73; font-weight: bold; }
+.ascii-char { color: #0f0; font-weight: bold; font-size: 1.1em; }
+.ascii-desc { color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
