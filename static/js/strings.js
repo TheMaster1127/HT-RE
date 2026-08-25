@@ -1,6 +1,18 @@
-async function loadFoundStrings() {
+async function loadFoundStrings(forceReload = false) {
+    if (typeof saveCurrentTabScroll === 'function') {
+        saveCurrentTabScroll();
+    }
     updateTabs('foundStrings');
     const container = document.getElementById('output');
+
+    if (!forceReload && tabDataCache['foundStrings']) {
+        mainScroller = null;
+        container.innerHTML = tabDataCache['foundStrings'].html;
+        const savedScroll = tabScrollPositions['foundStrings'] || 0;
+        container.scrollTop = savedScroll;
+        return;
+    }
+
     container.innerHTML = '<div style="padding:10px;">Analyzing...</div>';
 
     const resDisasm = await fetch(`${API}/objdump-d`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, options: {all_sections: true}}) });
@@ -20,7 +32,11 @@ async function loadFoundStrings() {
     }).join('');
     
     mainScroller = null; 
-    container.innerHTML = `<div id="fsList" style="padding: 10px;">${html}</div>`;
+    const finalHtml = `<div id="fsList" style="padding: 10px;">${html}</div>`;
+    tabDataCache['foundStrings'] = { html: finalHtml };
+    container.innerHTML = finalHtml;
+    const savedScroll = tabScrollPositions['foundStrings'] || 0;
+    container.scrollTop = savedScroll;
 }
 
 function filterFoundStrings(term) {

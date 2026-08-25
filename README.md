@@ -1,4 +1,4 @@
-# `HT-RE` – Web-Based Reverse Engineering Environment
+# ⚡ HT-RE – Web-Based Reverse Engineering Environment
 
 ---
 
@@ -6,60 +6,74 @@
 
 1. [Introduction](#introduction)
 2. [Why Use HT-RE?](#why-use-ht-re)
-3. [Massive Features Arsenal](#massive-features-arsenal)
-4. [Dependencies & Prerequisites](#dependencies--prerequisites)
+3. [Key Features Overview](#key-features-overview)
+4. [Prerequisites & Dependencies](#prerequisites--dependencies)
 5. [Installing `binpatch` (Required Dependency)](#installing-binpatch-required-dependency)
 6. [Installation & Setup](#installation--setup)
-7. [Usage](#usage)
+7. [Workflow & Usage Guide](#workflow--usage-guide)
 8. [License](#license)
 
 ---
 
 ## Introduction
 
-`HT-RE` is a blazing-fast, dependency-light, web-based Graphical User Interface for Reverse Engineering and Binary Patching. Designed natively for Linux, it acts as an IDE-like wrapper that seamlessly integrates standard GNU utilities (`objdump`, `readelf`, `xxd`, `strings`), the Ghidra Headless Decompiler, and the `binpatch` utility into a single, cohesive browser application. 
+`HT-RE` is a fast, dependency-light, web-based Graphical User Interface for Reverse Engineering and Binary Patching. Designed natively for Linux, it brings standard GNU utilities (`objdump`, `readelf`, `xxd`, `strings`, `as`, `objcopy`), the Ghidra Headless Decompiler, and the `binpatch` utility into a unified, responsive browser workspace.
 
-Instead of opening massive, resource-heavy Java GUIs, `HT-RE` lets you dissect, decompile, patch, convert strings, translate CPU memory, and calculate hex jumps directly from your browser with mathematical precision and permanent SHA-256 caching.
+Instead of opening heavy desktop applications, `HT-RE` lets you dissect, decompile, patch, convert data representations, inspect CPU memory, and calculate relative jumps directly in your browser with persistent SHA-256 caching and an integrated multi-window desktop environment.
 
 ---
 
 ## Why Use HT-RE?
 
-Traditional reverse engineering workflows often require juggling a terminal, a hex editor, a disassembler, a separate math calculator, an ASCII reference, and a decompiler simultaneously. `HT-RE` bridges this gap entirely:
-- **Instant Context:** Click a memory address in the `Header` or `Strings` view and instantly jump to that exact instruction in the `Disassembly` tab.
-- **Headless Power:** Uses Ghidra entirely in the background. It extracts the C/C++ decompilation and caches it permanently using the binary's SHA-256 hash. If you restart the server, your decompiled functions load instantly.
-- **All-in-One Data Arsenal:** Features a dedicated calculation tab with endless spawnable Reverse Engineering Scientific Calculators, Unicode String conversions, and physical memory Endian swappers.
+Traditional reverse engineering workflows often require juggling terminal windows, hex editors, disassemblers, calculators, and decompilers. `HT-RE` integrates these tools into a single interface:
+- **Instant Context Navigation:** Click memory addresses in disassembly, headers, or strings to jump directly to instruction offsets.
+- **Headless Ghidra Decompilation:** Runs Ghidra in the background, extracting C/C++ source and caching it permanently using SHA-256 file hashes for instant loading across sessions.
+- **Multi-Project Workspace:** Open and switch between multiple binaries in tabs without losing disassembly state, window layouts, or calculator data.
+- **Floating Multi-Window Environment:** Open multiple functions side-by-side, reorder tabs via drag-and-drop, pop tabs into separate windows, and manage views with a top-bar dock taskbar.
+- **Data & RE Calculator Arsenal:** Spawn unlimited bitwise scientific calculators, convert between data types (including Float16, Float32, Float64), swap endianness, and encode/decode UTF-8, UTF-16LE, and ANSI strings.
 
 ---
 
-## Massive Features Arsenal
+## Key Features Overview
 
-- **"All In One" Decompilation:** Stitches all Ghidra-decompiled C/C++ functions into a single, massive ACE Editor view (putting `main` at the bottom) for easy reading.
-- **Dis/Assembler Tool:** Because ARM and AArch64 bytes are impossible to hand-edit blindly, the built-in Dis/Assembler allows you to convert `mov r1, #55` natively into hex bytes (`e3 a0 10 37`) without ever leaving the browser.
-- **Infinite RE Calculators:** Spawn infinite calculators side-by-side. Featuring:
+- **Multi-Project Tabs:** Load multiple ELF binaries into workspace tabs. Switch between binaries while preserving full scroll positions, disassemblies, floating windows, and calculator states.
+- **Floating Multi-Window Desktop:**
+  - Multi-tab floating windows with independent Ace Editor instances.
+  - HTML5 drag-and-drop tab reordering and right-click tab detaching ("Pop into New Window").
+  - Window controls: Center on screen, minimize to top taskbar dock, maximize, and resize.
+  - Sidebar context menus to open functions in active or new windows.
+  - Interactive font size scaling (`A+` / `A-`) and symbol double-click jumping inside decompiled C/C++ code.
+- **Virtual DOM Scroller:** Renders massive 100,000+ line disassemblies smoothly with sub-millisecond updates and syntax highlighting.
+- **Persistent Tab Memory:** Remembers your exact scroll position and output state across all tabs (`Disassembly`, `Hex Dump`, `Strings`, `Found Strings`, `Header`, `Sections`, `Relocs`).
+- **"All In One" Decompilation:** Stitches all Ghidra-decompiled C/C++ functions into a single source view (with `main` or `_start` organized at the bottom) for readable top-down analysis.
+- **Dis/Assembler Tool:** Convert assembly instructions (e.g. `mov r1, #55` or `xor eax, eax`) directly to machine hex bytes (`e3 a0 10 37` / `31 c0`) and vice-versa for `x86-64`, `ARM`, and `AArch64`.
+- **Integrated `binpatch` GUI:** Search byte patterns (exact or heuristic), apply hex patches with automatic `.bak` backups, and disassemble functions with "Stream Until Return" support.
+- **Infinite RE Calculators:** Spawn unlimited calculators with:
   - Base translation outputs (Dec, Hex, Bin).
-  - Native space-insensitive Hex interpretation (e.g. `FF + FF` evaluates successfully).
-  - CPU-accurate bit-width bounding (`8-bit`, `16-bit`, `32-bit`, `64-bit`).
-  - Standard bitwise operators (AND, OR, XOR, LSH, RSH, NOT) and custom functions (`bswap32`, `rol`, `ror`).
-- **Memory Type & Float Conversions:** Real-time space-insensitive conversion between Hex, Int8/16/32/64, Unsigned constraints, and Float16/32/64 representations.
-- **Multi-Encoding Strings:** Instantly decode raw hex dumps into UTF-8, UTF-16LE (Windows Wide), or ANSI, fully supporting Emojis and Unicode bullets.
-- **Full-Screen ASCII Table:** A built-in top-to-bottom 3-column reference sheet for all 256 Extended and Control ASCII characters.
-- **Relative Jump Calculator:** Type your current offset and Target address, and calculate the exact memory relative jump required.
+  - Space-insensitive and prefix-free Hex interpretation (e.g. `FF + 20`).
+  - CPU-accurate bit-width bounding (`8-bit`, `16-bit`, `32-bit`, `64-bit`, `Unlimited`).
+  - Bitwise operations (AND, OR, XOR, LSH, RSH, NOT) and custom functions (`bswap32`, `bswap64`, `rol`, `ror`).
+  - Interactive calculation histories.
+- **Memory & Float Conversions:** Real-time conversions across Hex, Binary, Octal, Int8/16/32/64, UInt8/16/32/64, Float16 (Half), Float32 (Single), and Float64 (Double).
+- **Multi-Encoding String Converter:** Encode and decode text to hex across UTF-8, UTF-16LE (Windows Wide), and ANSI (Windows-1252).
+- **Full ASCII Reference Table:** Top-to-bottom 3-column reference covering all 256 standard, control, and extended ASCII characters.
+- **Relative Jump Calculator:** Calculate displacement offsets and destination targets in both Hex and Decimal.
+- **Granular JSON Workspace Exporter:** Selectively export headers, sections, disassembly segments, decompiled C/C++ functions, and custom binpatch runs into standalone JSON reports.
 
 ---
 
-## Dependencies & Prerequisites
+## Prerequisites & Dependencies
 
-`HT-RE` is built for **Linux environments only** (due to reliance on ELF architecture tools).
+`HT-RE` is built for **Linux environments** (utilizing standard Linux ELF tools).
 
 ### 1. Python 3.6+ & Flask
-The backend is driven by Python. You only need to install Flask:
+Install Flask for the backend server:
 ```bash
 pip install flask
 ```
 
 ### 2. GNU Binutils
-Used for disassembly, string extraction, and header parsing:
+Required for disassembly, symbol extraction, and binary inspection:
 ```bash
 # Arch / Artix Linux
 sudo pacman -S binutils
@@ -69,8 +83,9 @@ sudo apt install binutils
 ```
 
 ### 3. Ghidra (For C/C++ Decompilation)
-You must have Ghidra installed on your system. `HT-RE` will automatically search for the `analyzeHeadless` script in common directories (e.g., `/opt/ghidra/`, `~/Downloads/ghidra_.../`, `/usr/lib/ghidra/`).
-If you have Ghidra in a custom location, simply set the environment variable before running `HT-RE`:
+Ghidra must be installed on your system. `HT-RE` automatically looks for `analyzeHeadless` in common directories (`/opt/ghidra/`, `~/Downloads/ghidra_.../`, `/usr/lib/ghidra/`).
+
+If installed in a custom path, set `GHIDRA_HOME` before launching `HT-RE`:
 ```bash
 export GHIDRA_HOME="/path/to/your/ghidra_directory"
 ```
@@ -79,34 +94,21 @@ export GHIDRA_HOME="/path/to/your/ghidra_directory"
 
 ## Installing `binpatch` (Required Dependency)
 
-To use the **Patch/Find** tab and custom exports, you need `binpatch` installed globally. 
+To use the **Patch/Find** tab and custom export commands, install `binpatch` globally:
 
-You can get it from:
 - GitHub: [https://github.com/TheMaster1127/binpatch](https://github.com/TheMaster1127/binpatch)
 - GitLab: [https://gitlab.com/TheMaster1127/binpatch](https://gitlab.com/TheMaster1127/binpatch)
 
 ### System-wide Installation (Linux)
 
-To install `binpatch` so `HT-RE` can interact with it, follow these steps:
+```bash
+git clone https://github.com/TheMaster1127/binpatch.git
+cd binpatch
+sudo cp binpatch /usr/local/bin/binpatch
+sudo chmod +x /usr/local/bin/binpatch
+```
 
-1. **Clone the repository and move the script:**
-   ```bash
-   git clone https://github.com/TheMaster1127/binpatch.git
-   cd binpatch
-   sudo cp binpatch /usr/local/bin/binpatch
-   ```
-
-2. **Make it executable:**
-   ```bash
-   sudo chmod +x /usr/local/bin/binpatch
-   ```
-
-3. **Verify the installation:**
-   ```bash
-   binpatch --help
-   ```
-
-*(Alternatively, you can use the one-liner via `wget`):*
+*(Alternatively, install using `wget`):*
 ```bash
 sudo wget https://raw.githubusercontent.com/TheMaster1127/binpatch/main/binpatch -O /usr/local/bin/binpatch && sudo chmod +x /usr/local/bin/binpatch
 ```
@@ -115,32 +117,46 @@ sudo wget https://raw.githubusercontent.com/TheMaster1127/binpatch/main/binpatch
 
 ## Installation & Setup
 
-1. **Clone the `HT-RE` repository:**
+1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YourUsername/HT-RE.git
+   git clone https://github.com/TheMaster1127/HT-RE.git
    cd HT-RE
    ```
 
-2. **Run the server:**
+2. **Start the server:**
    ```bash
    python3 server.py
    ```
 
-3. **Open the Web UI:**
-   Open your browser and navigate to:
+3. **Open the application:**
+   Navigate your browser to:
    ```text
    http://localhost:8000
    ```
 
 ---
 
-## Usage
+## Workflow & Usage Guide
 
-1. **Load a Binary:** Enter the absolute path to a binary (e.g., `/home/user/workspace/a.out`) into the top navigation bar and press Enter.
-2. **Decompile All:** Click `⚡ Decompile All` in the sidebar to execute Ghidra's headless analyzer across all mappings. Wait for the `✓ Decompiled Already` flag to appear.
-3. **Navigate:** Double-click any function in the left sidebar to open the Analysis Modal. You can seamlessly switch between ASM and C/C++ views.
-4. **Patch:** Click the `Patch/Find (binpatch)` tab to search for exact or heuristic hex strings, and overwrite raw bytes (with `-va` Virtual Address support and automatic backups).
-5. **Export:** Click `Export JSON`, select exactly which functions you want the ASM and C/C++ for, and download a complete report.
+1. **Load Binaries:** Enter the absolute path to an executable in the top input box or click **📁 Browse** to upload an executable from your local file system.
+2. **Decompile All:** Click **⚡ Decompile All** in the left sidebar to run batch headless decompilation across all symbol mappings. Once finished, a `✓ Decompiled Already` indicator will appear.
+3. **Open Function Windows:**
+   - Double-click any function in the sidebar to open it in a floating window.
+   - Right-click functions to open them in new windows, tabbed views, or jump to them in the disassembly.
+4. **Window Management:**
+   - Drag windows by their title bars.
+   - Reorder tabs using drag-and-drop or right-click to pop tabs into standalone windows.
+   - Use window controls to center, minimize to the top taskbar dock, or maximize windows.
+5. **Inspect & Disassemble:**
+   - Switch between **Header / Info**, **Sections**, **Disassembly**, **Hex Dump**, **Relocs**, and **Strings**.
+   - Your scroll position is preserved when switching back and forth between tabs.
+6. **Patch & Assemble:**
+   - Use the **Patch/Find (binpatch)** tab to locate signatures, resolve function boundaries, and apply patches.
+   - Use the **Dis/Assembler** tab to convert between mnemonics and opcodes.
+7. **Calculate & Convert:**
+   - Open the **Data / Calc** tab to perform register simulations, IEEE float conversions, and relative jump calculations.
+   - Spawn multiple **RE Scientific Calculators** side-by-side.
+8. **Export Workspace:** Click **Export JSON**, select the desired headers, strings, disassembly chunks, and decompiled C/C++ functions, and download a structured JSON archive.
 
 ---
 

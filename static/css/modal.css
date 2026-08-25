@@ -1,29 +1,42 @@
-.modal { display: none; position: fixed; top: 80px; left: 250px; width: 850px; height: 650px; background: #000; border: 2px solid var(--primary); z-index: 1000; resize: both; overflow: auto; box-shadow: 0 0 20px rgba(0,0,0,0.8); flex-direction: column; }
-.modal-header { background: var(--primary); color: #000; padding: 8px 10px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none; }
-.modal-title-wrap { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 15px; }
+/* MULTI-MODAL FLOATING WINDOWS */
+.modal { display: none; position: fixed; top: 80px; left: 250px; width: 850px; height: 650px; background: #000; border: 2px solid var(--primary); z-index: 1000; resize: both; overflow: auto; box-shadow: 0 0 25px rgba(0,0,0,0.9); flex-direction: column; }
+.modal.window-visible { display: flex !important; }
+.modal.maximized { top: 50px !important; left: 0 !important; width: 100vw !important; height: calc(100vh - 50px) !important; resize: none !important; }
+.modal.minimized { display: none !important; }
 
-.modal-tabs-container { display: flex; background: #111; border-bottom: 1px solid var(--primary); overflow-x: auto; flex-shrink: 0; }
-.modal-tab { padding: 5px 12px; background: #222; color: #aaa; border-right: 1px solid #333; cursor: pointer; font-size: 0.8em; display: flex; align-items: center; gap: 8px; white-space: nowrap; user-select: none; }
-.modal-tab.active { background: var(--primary); color: #000; font-weight: bold; }
+.modal-header { background: var(--primary); color: #000; padding: 4px 8px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none; height: 34px; flex-shrink: 0; }
+.modal-title-wrap { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 10px; cursor: move; }
+.modal-title { cursor: move; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* WINDOW CONTROLS BUTTONS */
+.win-ctrl-btn { background: #222; color: #fff; border: 1px solid #000; padding: 0; font-size: 0.85em; cursor: pointer; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; font-weight: bold; line-height: 1; }
+.win-ctrl-btn:hover { background: #444; border-color: #fff; }
+.win-close-btn:hover { background: #ff3333 !important; color: #fff !important; }
+
+/* DRAGGABLE & REORDERABLE MODAL TABS */
+.modal-tabs-container { display: flex; background: #111; border-bottom: 1px solid var(--primary); overflow-x: auto; flex-shrink: 0; padding: 2px 2px 0 2px; gap: 2px; }
+.modal-tab { padding: 4px 8px; background: #222; color: #aaa; border: 1px solid #333; border-bottom: none; cursor: pointer; font-size: 0.8em; display: flex; align-items: center; gap: 6px; white-space: nowrap; user-select: none; max-width: 220px; height: 26px; }
+.modal-tab.active { background: var(--primary); color: #000; font-weight: bold; border-color: var(--primary); }
 .modal-tab:hover:not(.active) { background: #333; color: #fff; }
-.modal-tab-close { font-size: 1.1em; padding-bottom: 2px; }
-.modal-tab-close:hover { color: #ff3333; }
-.modal-tab.active .modal-tab-close:hover { color: #fff; }
+.modal-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.modal-tab-close { font-size: 1.1em; cursor: pointer; padding: 0 2px; border-radius: 2px; }
+.modal-tab-close:hover { color: #ff3333; background: #111; }
+.modal-tab.active .modal-tab-close:hover { color: #fff; background: #000; }
+.modal-tab.drag-over { border-left: 3px solid #55aaff !important; background: #444; }
 
 .golden-tab { color: #ffd700; border-bottom: 2px solid #ffd700; }
 .golden-tab.active { background: #ffd700; color: #000; font-weight: bold; border-bottom: none; }
 .golden-tab:hover:not(.active) { color: #ffeb73; }
 
 .modal-body { flex: 1; overflow: auto; padding: 0 10px; color: #ccc; white-space: pre; font-size: 0.9em; line-height: 20px; position: relative; }
-
-#modalEditor { background-color: #000000 !important; }
-#modalEditor .ace_gutter { background: #080808 !important; color: #555 !important; border-right: 1px solid #222; }
-#modalEditor .ace_scroller { background: #000000 !important; }
+.modal-editor { display: none; flex: 1; width: 100%; background-color: #000000 !important; }
+.modal-editor .ace_gutter { background: #080808 !important; color: #555 !important; border-right: 1px solid #222; }
+.modal-editor .ace_scroller { background: #000000 !important; }
 
 .export-col { flex: 1; display: flex; flex-direction: column; padding: 15px; overflow-y: auto; }
 .export-label { display: block; margin-bottom: 10px; cursor: pointer; }
 
-.context-menu { display: none; position: absolute; z-index: 1001; background: #000; border: 1px solid var(--primary); padding: 5px 0; box-shadow: 0 5px 15px rgba(0,0,0,0.5); min-width: 150px; }
+.context-menu { display: none; position: fixed; z-index: 5000; background: #000; border: 1px solid var(--primary); padding: 5px 0; box-shadow: 0 5px 20px rgba(0,0,0,0.8); min-width: 170px; }
 .context-menu-item { padding: 8px 15px; color: #ccc; cursor: pointer; font-size: 0.85em; }
 .context-menu-item:hover { background-color: #333; color: #fff; border-left: 2px solid var(--primary); }
 

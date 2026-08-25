@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+import tempfile
 from flask import Flask, request, jsonify
 from backend.config import DEFAULT_PORT, STATIC_FOLDER
 from backend.history_service import get_history, handle_load_binary, handle_delete_history
@@ -10,6 +12,11 @@ from backend.patch_service import handle_binpatch, handle_assemble, handle_disas
 
 app = Flask(__name__, static_url_path='', static_folder=STATIC_FOLDER)
 
+# Directory for file picker uploads
+UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "htre_uploads")
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -20,6 +27,18 @@ def after_request(response):
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
+
+@app.route('/api/upload', methods=['POST'])
+def api_upload():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+    target_path = os.path.join(UPLOAD_DIR, file.filename)
+    file.save(target_path)
+    os.chmod(target_path, 0o755)
+    return jsonify({'path': target_path})
 
 @app.route('/api/history', methods=['GET'])
 def api_history():

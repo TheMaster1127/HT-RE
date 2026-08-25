@@ -2,23 +2,43 @@
 * { box-sizing: border-box; }
 body { font-family: 'Fira Code', 'Courier New', monospace; background: var(--bg); color: #e0e0e0; margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-.top-bar { background: #050505; border-bottom: 2px solid var(--primary); padding: 10px 15px; display: flex; align-items: center; gap: 10px; height: 60px; flex-shrink: 0; }
-h1 { color: var(--primary); margin: 0; font-size: 1.5em; }
-input[type="text"], button, select { background: #000; border: 1px solid #444; color: var(--accent); padding: 6px 12px; font-family: inherit; outline: none; }
+.top-bar { background: #050505; border-bottom: 2px solid var(--primary); padding: 5px 12px; display: flex; align-items: center; gap: 8px; height: 50px; flex-shrink: 0; }
+h1 { color: var(--primary); margin: 0; font-size: 1.25em; white-space: nowrap; }
+
+/* Base Form Controls */
+input[type="text"], button, select { background: #000; border: 1px solid #444; color: var(--accent); padding: 4px 8px; font-family: inherit; font-size: 0.85em; outline: none; height: 30px; }
 button { cursor: pointer; font-weight: bold; }
 button:hover:not(:disabled) { background: #222; border-color: var(--primary); }
 button.active { background: var(--primary); color: #000; }
 button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 
+/* PROJECT WORKSPACE TABS */
+.project-tabs-container { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 1; align-items: center; padding: 2px; }
+.project-tab { background: #1a1a1a; border: 1px solid #333; color: #888; padding: 2px 8px; font-size: 0.8em; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 3px; max-width: 180px; height: 30px; white-space: nowrap; user-select: none; flex-shrink: 0; }
+.project-tab.active { background: #2a2010; border-color: var(--primary); color: #ffeb73; font-weight: bold; }
+.project-tab:hover:not(.active) { background: #222; color: #ccc; }
+.project-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-tab-close { color: #888; font-size: 1em; cursor: pointer; border-radius: 2px; padding: 0 2px; }
+.project-tab-close:hover { color: #ff3333; background: #333; }
+
+/* TOP BAR WINDOW TASKBAR DOCK */
+.window-taskbar { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 1; align-items: center; margin-left: 4px; }
+.taskbar-item { background: #111; border: 1px solid #444; color: #aaa; padding: 2px 8px; font-size: 0.75em; display: flex; align-items: center; gap: 5px; cursor: pointer; border-radius: 3px; max-width: 160px; height: 30px; white-space: nowrap; flex-shrink: 0; }
+.taskbar-item.active { background: var(--primary); color: #000; font-weight: bold; border-color: var(--primary); }
+.taskbar-item.minimized { opacity: 0.6; border-style: dashed; }
+.taskbar-item:hover { background: #333; color: #fff; }
+.taskbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* HISTORY DROPDOWN */
 .history-dropdown { position: relative; display: inline-block; }
-.history-btn { width: 150px; text-align: left; background: #000; color: var(--accent); border: 1px solid #444; padding: 6px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-.history-menu { display: none; position: absolute; background-color: #111; min-width: 300px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.8); z-index: 2000; border: 1px solid var(--primary); max-height: 400px; overflow-y: auto; }
+.history-btn { height: 30px; text-align: center; background: #000; color: var(--accent); border: 1px solid #444; padding: 4px 10px; cursor: pointer; font-size: 0.85em; font-family: inherit; }
+.history-menu { display: none; position: absolute; background-color: #111; min-width: 300px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.8); z-index: 5000; border: 1px solid var(--primary); max-height: 400px; overflow-y: auto; top: 32px; left: 0; }
 .history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #333; cursor: pointer; font-size: 0.85em; }
 .history-item:hover { background-color: #222; }
 .history-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.history-delete { color: #ff3333; background: transparent; border: none; font-size: 1.2em; margin-left: 10px; cursor: pointer; padding: 0 5px; }
+.history-delete { color: #ff3333; background: transparent; border: none; font-size: 1.2em; margin-left: 10px; cursor: pointer; padding: 0 5px; height: auto; }
 .history-delete:hover { color: #ff6666; background: transparent; border: none; }
-.export-btn { color: #55aaff; border-color: #55aaff; margin-left: 20px; }
+.export-btn { color: #55aaff; border-color: #55aaff; height: 30px; }
 
 .workspace { display: flex; flex: 1; overflow: hidden; position: relative; }
 .sidebar { width: 320px; min-width: 220px; max-width: 600px; background: #111; display: flex; flex-direction: column; overflow: hidden; }
@@ -27,18 +47,18 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 
 .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); background: #151515; }
 .sidebar-header h3 { color: var(--primary); margin: 0; font-size: 0.9em; }
-.btn-decomp-all { background: #ff6600; color: #000; border: none; padding: 4px 8px; font-size: 0.75em; font-weight: bold; }
+.btn-decomp-all { background: #ff6600; color: #000; border: none; padding: 4px 8px; font-size: 0.75em; font-weight: bold; height: auto; }
 .btn-decomp-all:hover { background: #ff8533; }
 
-.func-search { width: 100%; border: none; border-bottom: 1px solid var(--border); background: #0a0a0a; color: #fff; padding: 8px 10px; font-family: inherit; font-size: 0.85em; outline: none; }
+.func-search { width: 100%; border: none; border-bottom: 1px solid var(--border); background: #0a0a0a; color: #fff; padding: 8px 10px; font-family: inherit; font-size: 0.85em; outline: none; height: 32px; }
 .options-panel { padding: 10px; border-top: 1px solid var(--border); background: #151515; font-size: 0.8em; overflow-y: auto; }
 .options-panel label { display: block; margin-bottom: 8px; cursor: pointer; }
 .options-panel select { width: 100%; margin-top: 4px; }
 
 .func-list { overflow-y: auto; flex: 1; }
-.func-item { padding: 6px 10px; cursor: pointer; font-size: 0.8em; display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a1a; user-select: none; }
+.func-item { padding: 6px 10px; cursor: pointer; font-size: 0.8em; display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a1a; user-select: none; gap: 8px; align-items: center; }
 .func-item.active, .func-item:hover { background: #222; border-left: 3px solid var(--primary); }
-.func-item .addr { color: #55aaff; font-family: monospace; }
+.func-item .addr { color: #55aaff; font-family: monospace; flex-shrink: 0; }
 .func-item .c-badge { color: var(--primary); font-size: 0.75em; margin-right: 5px; font-weight: bold; display: none; }
 .func-item.cached .c-badge { display: inline; }
 
@@ -80,18 +100,33 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .conv-box h3 { color: #ffeb73; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 1em; }
 .int-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;}
 
-.clear-data-btn { background: #ff3333; color: #fff; border: 1px solid #ff3333; font-size: 0.85em; padding: 4px 8px; cursor: pointer; }
+.clear-data-btn { background: #ff3333; color: #fff; border: 1px solid #ff3333; font-size: 0.85em; padding: 4px 8px; cursor: pointer; height: auto; }
 .clear-data-btn:hover { background: #ff6666; color: #000; border-color: #ff6666; }
 
-/* Scientific Calculator Styles */
+/* Scientific Calculator Styles (Restored High Specificity) */
 .calc-instance { background: #050505; padding: 15px; border: 1px solid #333; border-radius: 5px; min-width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-.calc-history { background: #000; color: #aaa; border: 1px solid #222; height: 60px; overflow-y: auto; margin-bottom: 5px; font-size: 0.8em; padding: 5px; }
+.calc-history { background: #000; color: #aaa; border: 1px solid #222; height: 60px; overflow-y: auto; margin-bottom: 8px; font-size: 0.8em; padding: 5px; }
 .calc-hist-item { cursor: pointer; padding: 2px; user-select: text; }
 .calc-hist-item:hover { background: #222; color: #fff; }
-.calc-screen { width: 100%; height: 50px; background: #000; color: #0f0; font-size: 1.5em; text-align: right; margin-bottom: 10px; border: 1px solid #444; padding: 10px; font-family: monospace; outline: none; }
-.calc-screen:focus { border-color: #55aaff; }
+
+.calc-screen, input[type="text"].calc-screen {
+    width: 100% !important;
+    height: 50px !important;
+    background: #000 !important;
+    color: #0f0 !important;
+    font-size: 1.5em !important;
+    text-align: right !important;
+    margin-bottom: 10px !important;
+    border: 1px solid #444 !important;
+    padding: 8px 12px !important;
+    font-family: 'Fira Code', 'Courier New', monospace !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+}
+.calc-screen:focus, input[type="text"].calc-screen:focus { border-color: #55aaff !important; }
+
 .calc-grid-sci { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-.calc-btn { background: #1a1a1a; color: #fff; font-size: 1.1em; padding: 10px 0; border: 1px solid #333; cursor: pointer; border-radius: 3px; font-family: inherit; }
+.calc-btn { background: #1a1a1a; color: #fff; font-size: 1.1em; padding: 10px 0; border: 1px solid #333; cursor: pointer; border-radius: 3px; font-family: inherit; height: auto; }
 .calc-btn:hover { background: #333; border-color: #55aaff; }
 .calc-btn-op { background: #222; color: #55aaff; font-size: 0.9em; }
 .calc-btn-bit { background: #2a2010; color: #ffeb73; font-size: 0.9em; }

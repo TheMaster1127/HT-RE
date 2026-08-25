@@ -4,10 +4,100 @@ function showAsciiUI() { updateTabs('ascii'); }
 let currentVal = 0n; 
 
 function clearAllData() {
-    document.querySelectorAll('#convPanel input[type="text"], #convPanel textarea').forEach(el => {
+    document.querySelectorAll('#convPanel input[type="text"]:not(.calc-screen), #convPanel textarea').forEach(el => {
         el.value = '';
     });
     currentVal = 0n;
+}
+
+// Reset Converter and Calculators to a clean default state for a brand new project
+function resetConverterToDefault() {
+    clearAllData();
+    const container = document.getElementById('calculators-container');
+    if (container) {
+        container.innerHTML = '';
+        calcCounter = 0;
+        spawnCalculator();
+    }
+}
+
+// Export state of Converter & Calculators for Project switching
+function exportConverterState() {
+    const inputs = {};
+    document.querySelectorAll('#convPanel input[type="text"]:not(.calc-screen), #convPanel textarea').forEach(el => {
+        if (el.id) inputs[el.id] = el.value;
+    });
+
+    const calcs = [];
+    document.querySelectorAll('.calc-instance').forEach(inst => {
+        const id = inst.id.replace('calc-inst-', '');
+        const screen = document.getElementById('calc-screen-' + id);
+        const width = document.getElementById('calc-width-' + id);
+        const base = document.getElementById('calc-base-' + id);
+        const hist = document.getElementById('calc-hist-' + id);
+        const title = inst.querySelector('.calc-title') ? inst.querySelector('.calc-title').innerText : `Calculator #${id}`;
+        if (screen) {
+            calcs.push({
+                id: id,
+                title: title,
+                screen: screen.value,
+                width: width ? width.value : '32',
+                base: base ? base.value : 'dec',
+                historyHTML: hist ? hist.innerHTML : ''
+            });
+        }
+    });
+
+    return {
+        currentVal: currentVal.toString(),
+        inputs: inputs,
+        calcs: calcs
+    };
+}
+
+// Restore state of Converter & Calculators on Project switching
+function importConverterState(state) {
+    if (!state) {
+        resetConverterToDefault();
+        return;
+    }
+
+    clearAllData();
+
+    try {
+        currentVal = state.currentVal ? BigInt(state.currentVal) : 0n;
+    } catch(e) {
+        currentVal = 0n;
+    }
+
+    if (state.inputs) {
+        for (let [id, val] of Object.entries(state.inputs)) {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+        }
+    }
+
+    const container = document.getElementById('calculators-container');
+    if (container) {
+        container.innerHTML = '';
+        calcCounter = 0;
+
+        if (state.calcs && state.calcs.length > 0) {
+            state.calcs.forEach(c => {
+                const newId = spawnCalculator(c.title || `Calculator #${c.id}`);
+                const screen = document.getElementById('calc-screen-' + newId);
+                const width = document.getElementById('calc-width-' + newId);
+                const base = document.getElementById('calc-base-' + newId);
+                const hist = document.getElementById('calc-hist-' + newId);
+                if (screen) screen.value = c.screen || '';
+                if (width) width.value = c.width || '32';
+                if (base) base.value = c.base || 'dec';
+                if (hist) hist.innerHTML = c.historyHTML || '';
+            });
+        } else {
+            spawnCalculator();
+        }
+    }
 }
 
 // Blocks user from physically typing invalid characters for specific fields
@@ -136,7 +226,6 @@ function broadcastConversions(skipSource) {
     }
 }
 
-
 // --- Endianness & Address Swapper ---
 function updateEndian(source) {
     let inEl = document.getElementById(source === 'little' ? 'cv-end-little' : 'cv-end-big');
@@ -149,7 +238,6 @@ function updateEndian(source) {
     bytes.reverse();
     outEl.value = bytes.length > 0 ? '0x' + bytes.join('') : '';
 }
-
 
 // --- String ↔ Hex Converter (UTF-8, UTF-16LE, ANSI) ---
 function updateStrConv(source) {
@@ -193,7 +281,6 @@ function updateStrConv(source) {
     }
 }
 
-
 // --- Relative Jump Calculator ---
 function calcJump(source) {
     try {
@@ -234,7 +321,6 @@ function calcJump(source) {
     }
 }
 
-
 // --- Custom Math.js RE Injections ---
 math.import({
     bswap32: function (x) {
@@ -259,16 +345,18 @@ math.import({
     }
 });
 
-
-// --- Math.js Scientific Spawning Calculator ---
+// --- Dynamic Calculators Management ---
 let calcCounter = 0;
 
-function spawnCalculator() {
-    const id = calcCounter++;
+function spawnCalculator(customTitle = null) {
+    const id = ++calcCounter;
+    const title = customTitle || `Calculator #${id}`;
+    const isFirstCalc = (document.querySelectorAll('.calc-instance').length === 0);
+
     const calcHTML = `
         <div class="calc-instance" id="calc-inst-${id}">
             <div style="display:flex; justify-content:space-between; margin-bottom:5px; align-items:center;">
-                <span style="color:#55aaff; font-size:0.85em; font-weight:bold; margin-right:10px;">Calculator #${id + 1}</span>
+                <span class="calc-title" style="color:#55aaff; font-size:0.85em; font-weight:bold; margin-right:10px;">${escapeHTML(title)}</span>
                 <div style="display:flex; gap:5px; align-items:center;">
                     <select id="calc-width-${id}" style="background:#222; border:1px solid #444; color:#aaa; font-size:0.8em; padding:2px;">
                         <option value="unlimited">Unlimited (Float)</option>
@@ -282,7 +370,7 @@ function spawnCalculator() {
                         <option value="hex">Hex</option>
                         <option value="bin">Bin</option>
                     </select>
-                    ${id > 0 ? `<button style="background:transparent; color:#ff3333; border:none; font-size:1.1em; cursor:pointer; padding:0 0 0 5px;" onclick="deleteCalculator(${id})">×</button>` : ''}
+                    <button class="calc-del-btn" style="background:transparent; color:#ff3333; border:none; font-size:1.1em; cursor:pointer; padding:0 0 0 5px; display:${isFirstCalc ? 'none' : 'inline-block'};" onclick="deleteCalculator(${id})" title="Delete this calculator">×</button>
                 </div>
             </div>
             
@@ -335,17 +423,22 @@ function spawnCalculator() {
         </div>
     `;
     document.getElementById('calculators-container').insertAdjacentHTML('beforeend', calcHTML);
+    return id;
 }
 
 function deleteCalculator(id) {
-    if (confirm(`Are you sure you want to delete Calculator #${id + 1}?`)) {
-        document.getElementById('calc-inst-' + id).remove();
+    const el = document.getElementById('calc-inst-' + id);
+    if (!el) return;
+    const title = el.querySelector('.calc-title') ? el.querySelector('.calc-title').innerText : `Calculator #${id}`;
+    if (confirm(`Are you sure you want to delete ${title}?`)) {
+        el.remove();
     }
 }
 
 function deleteAllCalculators() {
+    const container = document.getElementById('calculators-container');
+    if (!container || container.children.length <= 1) return;
     if (confirm("Are you sure you want to delete all extra calculators?")) {
-        const container = document.getElementById('calculators-container');
         while (container.children.length > 1) {
             container.removeChild(container.lastChild);
         }
@@ -353,7 +446,9 @@ function deleteAllCalculators() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    spawnCalculator();
+    if (document.querySelectorAll('.calc-instance').length === 0) {
+        spawnCalculator();
+    }
     generateAsciiTable();
 });
 
@@ -377,7 +472,6 @@ function calcEvaluate(id) {
         if (!screen.value.trim()) return;
         let expr = screen.value;
         
-        // Auto-Hex Matcher ignores prefixed values, scientific E's, pure decimals, and math variables.
         let parsedExpr = expr.replace(/\b([a-zA-Z0-9]+)\b/g, (match) => {
             if (/^0[xbo][0-9a-zA-Z]+$/i.test(match)) return match; 
             if (/^\d+$/.test(match)) return match; 
@@ -414,10 +508,6 @@ function calcEvaluate(id) {
     }
 }
 
-function escapeHTML(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 // --- Mass ASCII Table Generation (Top-To-Bottom, 3 Columns) ---
 function generateAsciiTable() {
     const controlDesc = [
@@ -433,7 +523,6 @@ function generateAsciiTable() {
 
     let html = '<div style="display:flex; gap:15px; width:100%;">';
     
-    // Split 256 items into 3 columns (86 items per col, last col gets 84)
     for (let col = 0; col < 3; col++) {
         html += `<div style="flex:1; background:#111; border: 1px solid var(--border); padding: 5px;">`;
         html += `<div class="ascii-row ascii-header">

@@ -1,17 +1,51 @@
-async function runCmd(cmd, tabName) {
+function saveCurrentTabScroll() {
+    if (!currentTab) return;
+    if (mainScroller && mainScroller.container) {
+        tabScrollPositions[currentTab] = mainScroller.container.scrollTop;
+    } else {
+        const out = document.getElementById('output');
+        if (out) tabScrollPositions[currentTab] = out.scrollTop;
+    }
+}
+
+async function runCmd(cmd, tabName, forceReload = false) {
+    saveCurrentTabScroll();
     updateTabs(tabName);
     let mode = 'text';
     if (cmd === 'hexdump') mode = 'hex';
     else if (cmd === 'readelf-h') mode = 'header';
     else if (cmd === 'readelf-S') mode = 'sections';
 
+    if (!forceReload && tabDataCache[tabName]) {
+        mainScroller = new VirtualScroller('output', tabDataCache[tabName].output, mode);
+        const savedScroll = tabScrollPositions[tabName] || 0;
+        if (mainScroller.container) {
+            mainScroller.container.scrollTop = savedScroll;
+            mainScroller.render();
+        }
+        return;
+    }
+
     document.getElementById('output').innerHTML = '<div style="padding:10px;">Loading...</div>';
     const res = await fetch(`${API}/generic`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, cmd: cmd}) });
     const data = await res.json();
-    mainScroller = new VirtualScroller('output', data.output, mode);
+    
+    const outputText = data.output || '';
+    tabDataCache[tabName] = { output: outputText, mode: mode };
+
+    mainScroller = new VirtualScroller('output', outputText, mode);
+    const savedScroll = tabScrollPositions[tabName] || 0;
+    if (savedScroll && mainScroller.container) {
+        mainScroller.container.scrollTop = savedScroll;
+        mainScroller.render();
+    }
 }
 
 function updateTabs(activeTab) {
+    if (currentTab !== activeTab) {
+        saveCurrentTabScroll();
+    }
+    
     currentTab = activeTab;
     
     // Clear navigation history when leaving disassembly tab
@@ -31,24 +65,26 @@ function updateTabs(activeTab) {
     document.getElementById('bar-jump').style.display = (activeTab === 'disasm' || activeTab === 'hexdump') ? 'flex' : 'none';
     document.getElementById('bar-search').style.display = (activeTab === 'strings' || activeTab === 'foundStrings' || activeTab === 'hexdump' || activeTab === 'header' || activeTab === 'sections' || activeTab === 'relocs') ? 'flex' : 'none';
     
-    if(activeTab === 'disasm' || activeTab === 'hexdump') document.getElementById('jumpInput').placeholder = activeTab === 'hexdump' ? "e.g. 0x112b" : "e.g. 0x4011cd";
+    if (activeTab === 'disasm' || activeTab === 'hexdump') {
+        document.getElementById('jumpInput').placeholder = activeTab === 'hexdump' ? "e.g. 0x112b" : "e.g. 0x4011cd";
+    }
 
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7, 'asm': 8, 'conv': 9, 'ascii': 10 };
-    if(activeTab in btnMap) document.querySelectorAll('.tab-btn')[btnMap[activeTab]].classList.add('active');
+    if (activeTab in btnMap) document.querySelectorAll('.tab-btn')[btnMap[activeTab]].classList.add('active');
 }
 
 function executeSearch() {
     const val = document.getElementById('searchInput').value;
-    if(val) {
-        if(currentTab === 'foundStrings') filterFoundStrings(val);
-        else if(mainScroller) mainScroller.searchNext(val);
+    if (val) {
+        if (currentTab === 'foundStrings') filterFoundStrings(val);
+        else if (mainScroller) mainScroller.searchNext(val);
     }
 }
 
 function executeFindAll() {
     const val = document.getElementById('searchInput').value;
-    if(!val || !mainScroller) return;
+    if (!val || !mainScroller) return;
     const results = mainScroller.searchEngine(val, true);
     const panel = document.getElementById('findAllPanel');
     const list = document.getElementById('findAllList');
@@ -118,7 +154,7 @@ async function deleteHistoryItem(event, path) {
 function renderHistoryUI(historyArray) {
     const menu = document.getElementById('historyMenu');
     menu.innerHTML = '';
-    if (historyArray.length === 0) {
+    if (!historyArray || historyArray.length === 0) {
         menu.innerHTML = '<div style="padding:10px; color:#888;">No history found.</div>';
         return;
     }
@@ -194,10 +230,16 @@ function convert(to) {
 document.addEventListener('click', (e) => { if (!e.target.closest('#contextMenu')) contextMenu.style.display = 'none'; });
 
 // Ace Context Menu replacement
-document.getElementById('modalEditor').addEventListener('contextmenu', function(e) {
-    if (!aceEditor) return;
-    const pos = aceEditor.getCursorPosition();
-    const token = aceEditor.session.getTokenAt(pos.row, pos.column);
+document.addEventListener('contextmenu', function(e) {
+    const editorEl = e.target.closest('.modal-editor');
+    if (!editorEl) return;
+
+    const winId = editorEl.id.replace('_modalEditor', '');
+    const win = openWindows[winId];
+    if (!win || !win.aceEditor) return;
+
+    const pos = win.aceEditor.getCursorPosition();
+    const token = win.aceEditor.session.getTokenAt(pos.row, pos.column);
     if (token && token.value) {
         const val = token.value.trim();
         const isHex = /^0x[0-9a-fA-F]+$/i.test(val);
@@ -222,9 +264,9 @@ document.getElementById('modalEditor').addEventListener('contextmenu', function(
 
             const menu = document.getElementById('contextMenu');
             menu.innerHTML = `
-                <div class="context-menu-item" onclick="replaceAceToken('${hexStr}')">Convert to Hex: ${hexStr}</div>
-                <div class="context-menu-item" onclick="replaceAceToken('${decStr}')">Convert to Decimal: ${decStr}</div>
-                <div class="context-menu-item" onclick="replaceAceToken('\\'${asciiStr}\\'')">Convert to ASCII: '${asciiStr}'</div>
+                <div class="context-menu-item" onclick="replaceAceToken('${winId}', '${hexStr}')">Convert to Hex: ${hexStr}</div>
+                <div class="context-menu-item" onclick="replaceAceToken('${winId}', '${decStr}')">Convert to Decimal: ${decStr}</div>
+                <div class="context-menu-item" onclick="replaceAceToken('${winId}', '\\'${asciiStr}\\'')">Convert to ASCII: '${asciiStr}'</div>
             `;
             menu.style.top = `${e.pageY}px`;
             menu.style.left = `${e.pageX}px`;
@@ -235,33 +277,35 @@ document.getElementById('modalEditor').addEventListener('contextmenu', function(
     }
 });
 
-function replaceAceToken(newVal) {
-    if (aceEditor && activeAceTokenRange) {
-        aceEditor.session.replace(activeAceTokenRange, newVal);
+function replaceAceToken(winId, newVal) {
+    const win = openWindows[winId];
+    if (win && win.aceEditor && activeAceTokenRange) {
+        win.aceEditor.session.replace(activeAceTokenRange, newVal);
         activeAceTokenRange = null;
     }
     document.getElementById('contextMenu').style.display = 'none';
 }
 
-// Draggable Modals setup
+// Draggable Export Modal setup
 const exportModal = document.getElementById('exportModal');
 const exportHeader = document.getElementById('exportHeader');
-let expIsDown = false, expOffset = [0,0];
+let expIsDown = false, expOffset = [0, 0];
+
 exportHeader.addEventListener('mousedown', (e) => { 
-    if (e.target.closest('button') || e.target.closest('span') || e.target.closest('input')) return;
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.win-ctrl-btn')) return;
     expIsDown = true; 
+    topZIndex += 2;
+    exportModal.style.zIndex = topZIndex;
     expOffset = [ exportModal.offsetLeft - e.clientX, exportModal.offsetTop - e.clientY ]; 
 });
-document.addEventListener('mouseup', () => expIsDown = false);
-document.addEventListener('mousemove', (e) => { if (expIsDown) { e.preventDefault(); exportModal.style.left = (e.clientX + expOffset[0]) + 'px'; exportModal.style.top  = (e.clientY + expOffset[1]) + 'px'; }});
 
-const modal = document.getElementById('funcModal');
-const header = document.getElementById('modalHeader');
-let isDown = false, offset = [0,0];
-header.addEventListener('mousedown', (e) => { 
-    if (e.target.closest('button') || e.target.closest('span') || e.target.closest('input') || e.target.closest('.modal-tabs-container')) return;
-    isDown = true; 
-    offset = [ modal.offsetLeft - e.clientX, modal.offsetTop - e.clientY ]; 
+document.addEventListener('mouseup', () => expIsDown = false);
+document.addEventListener('mousemove', (e) => { 
+    if (expIsDown) { 
+        e.preventDefault(); 
+        const newLeft = Math.max(-exportModal.offsetWidth + 100, Math.min(window.innerWidth - 50, e.clientX + expOffset[0]));
+        const newTop = Math.max(0, Math.min(window.innerHeight - 50, e.clientY + expOffset[1]));
+        exportModal.style.left = newLeft + 'px'; 
+        exportModal.style.top  = newTop + 'px'; 
+    }
 });
-document.addEventListener('mouseup', () => isDown = false);
-document.addEventListener('mousemove', (e) => { if (isDown) { e.preventDefault(); modal.style.left = (e.clientX + offset[0]) + 'px'; modal.style.top  = (e.clientY + offset[1]) + 'px'; }});

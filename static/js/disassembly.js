@@ -1,5 +1,23 @@
-async function loadDisasm() {
+async function loadDisasm(forceReload = false) {
+    if (typeof saveCurrentTabScroll === 'function') {
+        saveCurrentTabScroll();
+    }
     updateTabs('disasm');
+    
+    // Check if we already have the disassembly cached in memory for the active project
+    const cachedText = (openProjects[binaryPath] && openProjects[binaryPath].disasmText) || (tabDataCache['disasm'] && tabDataCache['disasm'].output);
+    if (!forceReload && cachedText) {
+        mainScroller = new VirtualScroller('output', cachedText, 'disasm');
+        const savedScroll = tabScrollPositions['disasm'] !== undefined 
+            ? tabScrollPositions['disasm'] 
+            : (openProjects[binaryPath] && openProjects[binaryPath].scrollPos !== undefined ? openProjects[binaryPath].scrollPos : 0);
+        if (mainScroller.container) {
+            mainScroller.container.scrollTop = savedScroll;
+            mainScroller.render();
+        }
+        return;
+    }
+
     document.getElementById('output').innerHTML = '<div style="padding:10px;">Disassembling...</div>';
     const options = {
         arch: document.getElementById('opt-arch').value,
@@ -14,23 +32,34 @@ async function loadDisasm() {
         body: JSON.stringify({binary_path: binaryPath, options: options})
     });
     const data = await res.json();
-    mainScroller = new VirtualScroller('output', data.output, 'disasm');
+    const disasmOut = data.output || "";
+    
+    if (openProjects[binaryPath]) {
+        openProjects[binaryPath].disasmText = disasmOut;
+    }
+    tabDataCache['disasm'] = { output: disasmOut, mode: 'disasm' };
+
+    mainScroller = new VirtualScroller('output', disasmOut, 'disasm');
+    const savedScroll = tabScrollPositions['disasm'] || 0;
+    if (savedScroll && mainScroller.container) {
+        mainScroller.container.scrollTop = savedScroll;
+        mainScroller.render();
+    }
 }
 
 function saveHistory(addressStr) {
     if (!addressStr) return;
     navHistory.push(addressStr);
-    document.getElementById('btnBack').disabled = false;
+    const btnBack = document.getElementById('btnBack');
+    if (btnBack) btnBack.disabled = false;
 }
 
 function recordPosition(historyArg) {
     if (currentTab !== 'disasm' || !mainScroller) return;
     
     if (typeof historyArg === 'string') {
-        // We know the exact line address the user clicked!
         saveHistory(historyArg);
     } else if (historyArg === true) {
-        // Fallback: Use the exact center of the current screen view
         const currentAddr = mainScroller.getCurrentAddress();
         if (currentAddr) saveHistory(currentAddr);
     }
@@ -68,7 +97,6 @@ function jumpTo(addr, historyArg = true) {
     } else if (currentTab === 'disasm') {
         search = search + ':';
         
-        // Exact targeting to avoid accidentally matching jump arguments. We ensure the line defines the address.
         const targetIndex = mainScroller.lines.findIndex(line => {
             const lowerLine = line.toLowerCase();
             return lowerLine.includes(search) && lowerLine.split(':')[0].endsWith(search.replace(':', ''));
@@ -78,7 +106,6 @@ function jumpTo(addr, historyArg = true) {
             mainScroller.scrollToIndex(targetIndex);
             return;
         } else {
-            // Fallback matching
             const fallbackIndex = mainScroller.lines.findIndex(line => line.toLowerCase().includes(search));
             if (fallbackIndex !== -1) {
                 mainScroller.scrollToIndex(fallbackIndex);
@@ -92,9 +119,11 @@ function jumpTo(addr, historyArg = true) {
 function goBack() {
     if (navHistory.length > 0) {
         const prevAddr = navHistory.pop();
-        // Pass false so returning doesn't overwrite our history state!
         jumpTo(prevAddr, false); 
-        if (navHistory.length === 0) document.getElementById('btnBack').disabled = true;
+        if (navHistory.length === 0) {
+            const btnBack = document.getElementById('btnBack');
+            if (btnBack) btnBack.disabled = true;
+        }
     }
 }
 

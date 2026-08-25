@@ -3,6 +3,10 @@ import json
 from backend.config import HISTORY_FILE
 from backend.utils import validate, run_cmd, get_file_hash, load_decomp_cache
 
+UPLOAD_DIR = ".htre_uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
 def get_history():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -38,6 +42,21 @@ def handle_load_binary(path):
     decomp_cache = load_decomp_cache(file_hash)
 
     return {'valid': True, 'arch': arch, 'history': hist, 'file_hash': file_hash, 'decomp_cache': decomp_cache}
+
+def handle_upload_binary(file_obj):
+    if not file_obj or not file_obj.filename:
+        return {'valid': False, 'message': 'No file provided'}
+    filename = os.path.basename(file_obj.filename)
+    dest_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
+    file_obj.save(dest_path)
+    try:
+        os.chmod(dest_path, 0o755)
+    except Exception:
+        pass
+    
+    result = handle_load_binary(dest_path)
+    result['path'] = dest_path
+    return result
 
 def handle_delete_history(path):
     hist = get_history()
