@@ -1,4 +1,4 @@
-// --- DYNAMIC MULTI-WINDOW MANAGER ---
+// --- DYNAMIC MULTI-WINDOW MANAGER (PROJECT-ISOLATED) ---
 
 function bringWindowToFront(winId) {
     const win = openWindows[winId];
@@ -9,13 +9,49 @@ function bringWindowToFront(winId) {
     if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
+function updateProjectWindowsVisibility() {
+    Object.values(openWindows).forEach(win => {
+        if (win.binary === binaryPath) {
+            if (win.isMinimized) {
+                win.el.style.display = 'none';
+                win.el.classList.add('minimized');
+                win.el.classList.remove('window-visible');
+            } else {
+                win.el.style.display = 'flex';
+                win.el.classList.remove('minimized');
+                win.el.classList.add('window-visible');
+                if (win.isMaximized) {
+                    win.el.classList.add('maximized');
+                }
+            }
+        } else {
+            // Belongs to another binary -> Hide completely!
+            win.el.style.display = 'none';
+            win.el.classList.remove('window-visible');
+        }
+    });
+
+    const currentProjectWins = Object.values(openWindows).filter(w => w.binary === binaryPath && !w.isMinimized);
+    if (currentProjectWins.length > 0) {
+        if (!activeWindowId || !openWindows[activeWindowId] || openWindows[activeWindowId].binary !== binaryPath) {
+            activeWindowId = currentProjectWins[currentProjectWins.length - 1].id;
+        }
+    } else {
+        activeWindowId = null;
+    }
+
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
+}
+
 function createNewWindow(initialFunc = null, customGeom = null) {
     const winId = 'win_' + (++windowCounter);
     const container = document.getElementById('windowManagerContainer');
+    const targetBinary = (initialFunc && initialFunc.binary) || binaryPath;
 
     const defaultWidth = 850;
     const defaultHeight = 650;
-    const offsetStep = (Object.keys(openWindows).length % 6) * 30;
+    const projectWinCount = Object.values(openWindows).filter(w => w.binary === targetBinary).length;
+    const offsetStep = (projectWinCount % 6) * 30;
     const defaultLeft = Math.max(20, Math.min(window.innerWidth - defaultWidth - 20, 200 + offsetStep));
     const defaultTop = Math.max(60, Math.min(window.innerHeight - defaultHeight - 20, 80 + offsetStep));
 
@@ -65,6 +101,7 @@ function createNewWindow(initialFunc = null, customGeom = null) {
 
     const winObj = {
         id: winId,
+        binary: targetBinary, // Permanently binds window to its specific binary workspace!
         el: modalEl,
         tabs: [],
         activeTabId: null,
@@ -84,7 +121,7 @@ function createNewWindow(initialFunc = null, customGeom = null) {
         addTabToWindow(winId, initialFunc);
     }
 
-    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
+    updateProjectWindowsVisibility();
     return winObj;
 }
 
@@ -162,13 +199,11 @@ function detachTabToNewWindow(sourceWinId, cleanId) {
     const tabFunc = srcWin.tabs.find(f => getCleanId(f.addr) === cleanId);
     if (!tabFunc) return;
     
-    // BUGFIX: Save the current active view (asm vs decomp) so we don't reset to ASM!
     const activeViewToTransfer = srcWin.currentView;
 
     closeWindowTab(null, sourceWinId, cleanId);
     const newWin = createNewWindow(tabFunc);
     
-    // Switch the new window specifically to the inherited view
     switchWindowView(newWin.id, activeViewToTransfer);
     bringWindowToFront(newWin.id);
 }
@@ -221,6 +256,8 @@ function minimizeWindow(winId) {
     if (!win) return;
     win.isMinimized = true;
     win.el.classList.add('minimized');
+    win.el.classList.remove('window-visible');
+    win.el.style.display = 'none';
     if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
@@ -230,6 +267,7 @@ function restoreWindow(winId) {
     win.isMinimized = false;
     win.el.classList.remove('minimized');
     win.el.classList.add('window-visible');
+    win.el.style.display = 'flex';
     bringWindowToFront(winId);
 }
 
@@ -238,9 +276,10 @@ function closeWindow(winId) {
     if (!win) return;
     win.el.remove();
     delete openWindows[winId];
+    
+    const remainingCurrent = Object.values(openWindows).filter(w => w.binary === binaryPath);
     if (activeWindowId === winId) {
-        const remaining = Object.keys(openWindows);
-        activeWindowId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+        activeWindowId = remainingCurrent.length > 0 ? remainingCurrent[remainingCurrent.length - 1].id : null;
     }
     if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
@@ -260,8 +299,11 @@ function updateTaskbarUI() {
     if (!taskbar) return;
     taskbar.innerHTML = '';
 
+    // ONLY SHOW TASKBAR BUTTONS BELONGING TO ACTIVE BINARY!
     Object.keys(openWindows).forEach(winId => {
         const win = openWindows[winId];
+        if (win.binary !== binaryPath) return;
+
         const activeTab = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId) || win.tabs[0];
         const title = activeTab ? activeTab.name : 'Function Window';
         const isFocused = (activeWindowId === winId) && !win.isMinimized;
@@ -459,10 +501,17 @@ function closeWindowTab(event, winId, cleanId) {
 
 function openFuncWindow(func, forceNewWindow = false) {
     if (!func) return;
-    if (forceNewWindow || Object.keys(openWindows).length === 0) {
+    const targetBinary = func.binary || binaryPath;
+    
+    // Select windows that strictly belong to THIS active binary workspace
+    const projectWinIds = Object.keys(openWindows).filter(id => openWindows[id].binary === targetBinary);
+
+    if (forceNewWindow || projectWinIds.length === 0) {
         createNewWindow(func);
     } else {
-        const targetWinId = activeWindowId || Object.keys(openWindows)[0];
+        const targetWinId = (activeWindowId && openWindows[activeWindowId] && openWindows[activeWindowId].binary === targetBinary)
+            ? activeWindowId
+            : projectWinIds[projectWinIds.length - 1];
         addTabToWindow(targetWinId, func);
     }
 }
@@ -612,23 +661,20 @@ async function loadWindowDecomp(winId) {
 
     let textToLoad = "";
 
-    // BUGFIX: Vastly improved Combined View generating Logic (Filters out hidden functions & Pins main to bottom)
     if (cleanAddr === 'COMBINED') {
         textToLoad = `// =========================================\n// COMBINED DECOMPILATION: ${targetBinary.split('/').pop()}\n// =========================================\n\n`;
         
         let combinedMap = new Map();
         let hasMain = false;
         
-        // 1. Gather all functions
         Object.keys(originalDecompCache).forEach(k => {
             if (k.startsWith(targetBinary + '|||') && !k.endsWith('|||COMBINED')) {
                 const addrClean = k.split('|||')[1];
                 const gFunc = globalFunctions.find(gf => getCleanId(gf.addr) === addrClean);
                 const code = originalDecompCache[k];
                 
-                // Heavily filter out bad/empty stubs
                 if (code.includes('WARNING: Control flow encountered bad instruction data')) return;
-                if (code.replace(/\s/g, '').length < 30) return; // Too small, likely a stub
+                if (code.replace(/\s/g, '').length < 30) return;
                 
                 const fName = gFunc ? gFunc.name : "unknown_function";
                 if (fName === 'main') hasMain = true;
@@ -637,19 +683,16 @@ async function loadWindowDecomp(winId) {
             }
         });
 
-        // 2. Filter out unwanted internals (starts with _) unless it's a specific entry exception
         let filteredFuncs = Array.from(combinedMap.values()).filter(f => {
             if (['main', '_start', 'frame_dummy'].includes(f.name) || f.name.includes('register_tm_clones')) return true;
             if (f.name.startsWith('_')) return false; 
             return true;
         });
 
-        // 3. Prevent duplicate entry showing if main() is already present
         if (hasMain) {
             filteredFuncs = filteredFuncs.filter(f => f.name !== '_start');
         }
 
-        // 4. Unique by name to prevent multiple 'main's or aliases
         let uniqueNames = new Set();
         let finalFuncs = [];
         for (let f of filteredFuncs) {
@@ -658,10 +701,9 @@ async function loadWindowDecomp(winId) {
             finalFuncs.push(f);
         }
 
-        // 5. Sort addresses logically, but force main() or _start() to the extreme bottom
         finalFuncs.sort((a, b) => {
-            const aIsEntry = (a.name === 'main' || a.name === '_start');
-            const bIsEntry = (b.name === 'main' || b.name === '_start');
+            const aIsEntry = (a.name === 'main' || (!hasMain && a.name === '_start'));
+            const bIsEntry = (b.name === 'main' || (!hasMain && b.name === '_start'));
             if (aIsEntry && !bIsEntry) return 1;
             if (!aIsEntry && bIsEntry) return -1;
             if (aIsEntry && bIsEntry) {

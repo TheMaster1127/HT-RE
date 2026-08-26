@@ -104,11 +104,16 @@ async function loadBinary() {
         }
         renderProjectTabs();
         
-        // RESTORE CONVERTER / CALCULATORS STATE (Clean 1 default for new binary, or exact saved state for existing)
+        // RESTORE CONVERTER / CALCULATORS STATE
         if (typeof importConverterState === 'function') {
             importConverterState(openProjects[binaryPath].converterState);
         }
         
+        // ISOLATE & RESTORE FLOATING WINDOWS FOR THIS BINARY
+        if (typeof updateProjectWindowsVisibility === 'function') {
+            updateProjectWindowsVisibility();
+        }
+
         // RESTORE EXACT TAB PER PROJECT WORKSPACE
         const targetTab = (openProjects[binaryPath] && openProjects[binaryPath].activeTab) || 'disasm';
         updateTabs(targetTab);
@@ -185,6 +190,14 @@ function renderProjectTabs() {
 function closeProject(e, path) {
     e.stopPropagation();
     delete openProjects[path];
+    
+    // Clean up and close all floating windows belonging to this specific project
+    Object.keys(openWindows).forEach(winId => {
+        if (openWindows[winId].binary === path) {
+            closeWindow(winId);
+        }
+    });
+
     if (binaryPath === path) {
         const remaining = Object.keys(openProjects);
         if (remaining.length > 0) {
