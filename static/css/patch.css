@@ -1,3 +1,7 @@
+:root {
+    --dbg-font: 14px;
+}
+
 .found-string-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 60px; align-items: center; gap: 15px; padding: 6px 10px; border-bottom: 1px solid #1a1a1a; font-size: 0.9em; }
 .string-text { color: #ff6600; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: pre; cursor: pointer; }
 .string-addr { color: #55aaff; font-weight: bold; text-decoration: underline; cursor: pointer; font-family: monospace; }
@@ -21,11 +25,13 @@
 .bp-run-btn:hover:not(:disabled) { background: #ff8533; }
 .bp-output { margin-top: 20px; background: #000; padding: 15px; border: 1px solid var(--border); color: #0f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; overflow-y: auto; }
 
-/* History & Backup specific styling */
-.history-item-row { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #222; align-items: center; }
+/* History & Backup specific styling with deletion */
+.history-item-row { display: flex; justify-content: space-between; padding: 6px; border-bottom: 1px solid #222; align-items: center; }
 .history-item-row:hover { background: #111; }
-.history-restore-btn { background: #ff9900; color: #000; padding: 2px 5px; font-size: 0.8em; border: none; cursor: pointer; }
+.history-restore-btn { background: #ff9900; color: #000; padding: 2px 8px; font-size: 0.8em; border: none; cursor: pointer; font-weight: bold; }
 .history-restore-btn:hover { background: #e68a00; }
+.history-delete-btn { background: #ff3333; color: #fff; padding: 2px 6px; font-size: 0.8em; border: none; cursor: pointer; margin-left: 5px; }
+.history-delete-btn:hover { background: #ff6666; }
 
 /* IDE Specific Styles (Split layout) */
 .ide-split-container { display: flex; flex: 1; min-height: 0; }
@@ -48,3 +54,46 @@
 .ide-flag-cb { cursor: pointer; }
 .ide-more-btn { background: transparent; border: none; color: #55aaff; font-size: 0.85em; cursor: pointer; padding: 5px 0; margin-top: 8px; text-decoration: underline; display: inline-block; }
 .ide-more-flags { display: none; margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px; }
+
+/* ----------------------------------------------------
+   RUN / TRACE / HOOK UNIFIED WORKSPACE STYLING
+------------------------------------------------------- */
+.dbg-top-bar { display: flex; align-items: center; justify-content: space-between; background: #151515; padding: 6px 10px; border: 1px solid #333; border-radius: 4px; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+.dbg-btn-group { display: flex; gap: 5px; align-items: center; }
+.dbg-action-btn { height: 28px; padding: 0 10px; border: none; font-size: 0.85em; font-weight: bold; cursor: pointer; border-radius: 2px; display: inline-flex; align-items: center; gap: 4px; font-family: inherit; }
+.dbg-btn-run { background: #00cc66; color: #000; }
+.dbg-btn-run:hover { background: #00ff80; }
+.dbg-btn-cont { background: #ffeb73; color: #000; }
+.dbg-btn-cont:hover { background: #fff59d; }
+.dbg-btn-step { background: #3388ff; color: #fff; }
+.dbg-btn-step:hover { background: #55aaff; }
+.dbg-btn-next { background: #9933ff; color: #fff; }
+.dbg-btn-next:hover { background: #b366ff; }
+.dbg-btn-stop { background: #ff3333; color: #fff; }
+.dbg-btn-stop:hover { background: #ff6666; }
+
+.dbg-toggle-group { display: flex; gap: 15px; align-items: center; font-size: 0.85em; }
+.dbg-font-group { display: flex; gap: 4px; align-items: center; margin-left: auto; }
+.dbg-zoom-btn { height: 24px; padding: 0 8px; font-size: 0.8em; background: #222; border: 1px solid #444; color: #aaa; cursor: pointer; }
+.dbg-zoom-btn:hover { color: #fff; border-color: #888; }
+
+.dbg-workspace-grid { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.dbg-col { display: flex; flex-direction: column; min-height: 0; }
+.dbg-sidebar-col { width: 360px; flex-shrink: 0; }
+.dbg-logs-col { flex: 1; }
+
+.dbg-card { background: #111; border: 1px solid #282828; border-radius: 3px; display: flex; flex-direction: column; overflow: hidden; }
+.dbg-card-header { background: #181818; padding: 6px 10px; font-size: 0.85em; font-weight: bold; color: var(--primary); border-bottom: 1px solid #282828; display: flex; align-items: center; justify-content: space-between; }
+
+.dbg-bp-list { max-height: 120px; overflow-y: auto; padding: 4px; font-size: var(--dbg-font); }
+.dbg-bp-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid #1a1a1a; }
+.dbg-bp-item:hover { background: #1a1a1a; }
+
+.dbg-reg-grid { flex: 1; overflow-y: auto; padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: var(--dbg-font); font-family: monospace; }
+.dbg-reg-row { background: #0a0a0a; border: 1px solid #282828; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; border-radius: 3px; cursor: pointer; }
+.dbg-reg-row:hover { background: #1a1a1a; border-color: #555; }
+.dbg-reg-name { color: #ffeb73; font-weight: bold; font-size: 1.05em; }
+.dbg-reg-val { color: #00ffcc; font-weight: bold; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 110px; }
+
+.dbg-terminal { background: #000; color: #0f0; padding: 10px; font-family: monospace; font-size: var(--dbg-font); line-height: 1.45; overflow-y: auto; white-space: pre-wrap; word-break: break-all; flex: 1; min-height: 80px; }
+.dbg-ts { color: #666; font-size: 0.85em; margin-right: 6px; user-select: none; font-family: monospace; }

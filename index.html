@@ -125,72 +125,150 @@
             <div id="windowHeaderContextMenu" class="context-menu"></div>
             <div id="tabContextMenu" class="context-menu"></div>
 
-            <!-- Debug / Trace / Hook Panel -->
-            <div id="debugPanel" class="bp-container">
-                <div class="bp-header">
-                    <h2 style="color: #ff00ff; margin: 0;">Dynamic Trace & Emulation</h2>
-                    <span style="color: #888; font-size: 0.9em;">Interactive GDB/MI, QEMU Execution, Strace timeline, and Firmware Scanning</span>
+            <!-- Redesigned Run / Trace / Hook Panel -->
+            <div id="debugPanel" class="bp-container" style="padding: 10px;">
+                <!-- TOP CONTROL BAR -->
+                <div class="dbg-top-bar">
+                    <div class="dbg-btn-group">
+                        <button class="dbg-action-btn dbg-btn-run" onclick="startDebugger()" title="Start QEMU/GDB session">▶ Start</button>
+                        <button class="dbg-action-btn dbg-btn-cont" onclick="sendGdbCmd('-exec-continue')" title="Continue execution">⏭ Continue</button>
+                        <button class="dbg-action-btn dbg-btn-step" onclick="sendGdbCmd('-exec-step-instruction')" title="Single instruction step into">⬇ Step In</button>
+                        <button class="dbg-action-btn dbg-btn-next" onclick="sendGdbCmd('-exec-next-instruction')" title="Step over call">⤵ Step Over</button>
+                        <button class="dbg-action-btn dbg-btn-stop" onclick="stopDebugger()" title="Kill session">⏹ Stop</button>
+                    </div>
+
+                    <div class="dbg-toggle-group">
+                        <label class="inline-check" style="color: #ffeb73; font-weight: bold;">
+                            <input type="checkbox" id="dbg-use-qemu" checked onchange="toggleQemuWarning(this)"> Emulate with QEMU
+                        </label>
+                        <label class="inline-check">
+                            <input type="checkbox" id="dbg-chk-syscalls" checked> Trace Syscalls
+                        </label>
+                        <label class="inline-check">
+                            <input type="checkbox" id="dbg-chk-network" checked> Trace Network / Sockets
+                        </label>
+                        <label class="inline-check">
+                            <input type="checkbox" id="dbg-chk-timestamps" checked> Timestamps
+                        </label>
+                    </div>
+
+                    <div class="dbg-font-group">
+                        <span style="font-size:0.8em; color:#888;">Font:</span>
+                        <button class="dbg-zoom-btn" onclick="changeTerminalFontSize(-1)">A-</button>
+                        <button class="dbg-zoom-btn" onclick="changeTerminalFontSize(1)">A+</button>
+                    </div>
                 </div>
-                <div class="bp-tabs">
-                    <div class="bp-tab active" onclick="switchDebugTab('debugger')">Debugger (GDB + QEMU)</div>
-                    <div class="bp-tab" onclick="switchDebugTab('strace')">Syscalls & Network (strace)</div>
-                    <div class="bp-tab" onclick="switchDebugTab('binwalk')">Firmware & Sigs (binwalk)</div>
-                </div>
-                
-                <div id="dbg-debugger" class="bp-panel active" style="max-width: 100%;">
-                    <div style="display:flex; gap: 15px; flex-wrap: wrap;">
-                        <div style="flex: 1; min-width: 400px; display: flex; flex-direction: column;">
-                            <div class="bp-group" style="background:#111; padding: 10px; border: 1px solid #333;">
-                                <label class="inline-check"><input type="checkbox" id="dbg-use-qemu" checked> Emulate using QEMU User-Mode (Defaults to True)</label>
-                                <div style="display: flex; gap: 5px; margin-top: 10px;">
-                                    <button class="bp-run-btn" style="margin:0; background:#0f0;" onclick="startDebugger()">▶ Start</button>
-                                    <button class="bp-run-btn" style="margin:0; background:#ffeb73;" onclick="sendGdbCmd('-exec-continue')">Continue</button>
-                                    <button class="bp-run-btn" style="margin:0; background:#55aaff;" onclick="sendGdbCmd('-exec-step-instruction')">Step In</button>
-                                    <button class="bp-run-btn" style="margin:0; background:#55aaff;" onclick="sendGdbCmd('-exec-next-instruction')">Step Over</button>
-                                    <button class="bp-run-btn" style="margin:0; background:#ff3333;" onclick="stopDebugger()">■ Stop</button>
+
+                <!-- MAIN DEBUG LAYOUT GRID -->
+                <div class="dbg-workspace-grid">
+                    
+                    <!-- LEFT COLUMN: Registers & Breakpoints -->
+                    <div class="dbg-col dbg-sidebar-col">
+                        <!-- Breakpoint Box -->
+                        <div class="dbg-card">
+                            <div class="dbg-card-header">
+                                <span>🛑 Breakpoints</span>
+                            </div>
+                            <div style="display:flex; gap: 4px; padding: 6px; background: #111; border-bottom: 1px solid #222;">
+                                <input type="text" id="dbg-bp-input" placeholder="e.g. 0x401140 or main" style="flex:1; height: 26px;" onkeydown="if(event.key==='Enter') addBreakpoint()">
+                                <button onclick="addBreakpoint()" style="height: 26px; padding: 0 8px; background: #ff4444; color: #fff; border:none;">+ Add</button>
+                            </div>
+                            <div id="dbg-bp-list" class="dbg-bp-list">
+                                <div style="color:#666; font-style:italic; padding:6px;">No breakpoints set.</div>
+                            </div>
+                        </div>
+
+                        <!-- Live Registers Box -->
+                        <div class="dbg-card" style="flex: 1; min-height: 280px; margin-top: 10px;">
+                            <div class="dbg-card-header">
+                                <span>⚙ CPU Registers</span>
+                                <button onclick="fetchRegisters()" style="padding: 1px 5px; font-size: 0.75em; height: 20px; background: #222; color: #ffeb73; border: 1px solid #444;">↻ Refresh</button>
+                            </div>
+
+                            <!-- Register Editor Bar -->
+                            <div style="display:flex; gap: 4px; padding: 6px; background: #111; border-bottom: 1px solid #222; align-items:center;">
+                                <select id="dbg-reg-select" style="width: 80px; height: 26px;"></select>
+                                <input type="text" id="dbg-reg-val-input" placeholder="New hex (0x123)" style="flex:1; height: 26px;">
+                                <button onclick="setRegisterValue()" style="height: 26px; padding: 0 8px; background: #ffeb73; color: #000; border:none; font-weight:bold;">Set</button>
+                            </div>
+
+                            <div id="dbg-reg-grid" class="dbg-reg-grid">
+                                <div style="color:#666; font-style:italic; padding:10px;">Debugger not running.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: Unified Logs (Execution, Program I/O, Syscalls, Network) -->
+                    <div class="dbg-col dbg-logs-col">
+                        
+                        <!-- Top Split: Execution Log & Program I/O (stdout/stderr) -->
+                        <div style="display:flex; gap:10px; flex: 1.2; min-height:0;">
+                            
+                            <!-- Debugger Activity Log -->
+                            <div class="dbg-card" style="flex: 1.2;">
+                                <div class="dbg-card-header" style="justify-content: space-between;">
+                                    <span>🖥 GDB / QEMU Execution Log</span>
+                                    <button onclick="document.getElementById('dbg-console').innerHTML=''" style="padding:1px 5px; font-size:0.75em; height:20px; background:transparent; border:none; color:#888;">Clear</button>
+                                </div>
+                                <div id="dbg-console" class="dbg-terminal">Waiting to start debugger...</div>
+                                <div style="display:flex; background:#080808; border-top:1px solid #222; padding: 4px;">
+                                    <input type="text" id="dbg-cmd-input" placeholder="Send manual GDB command (e.g. x/10i $pc, etc.)" style="flex:1; height:26px; border:none;" onkeydown="if(event.key==='Enter') submitGdbCmd()">
+                                    <button onclick="submitGdbCmd()" style="height:26px; padding:0 10px; background:#333; color:#fff; border:none;">Send</button>
                                 </div>
                             </div>
-                            <div class="bp-group">
-                                <label>GDB MI Console (Log & Raw Input)</label>
-                                <div id="dbg-console" class="bp-output" style="height: 300px; margin-top: 5px;"></div>
-                                <input type="text" id="dbg-cmd-input" placeholder="e.g. -data-list-register-values x" style="width:100%; margin-top: 5px;" onkeydown="if(event.key==='Enter') submitGdbCmd()">
+
+                            <!-- Dedicated Program I/O Terminal (stdout / stderr) -->
+                            <div class="dbg-card" style="flex: 1;">
+                                <div class="dbg-card-header" style="justify-content: space-between;">
+                                    <span style="color:#00ffcc;">💻 Program I/O (stdout / stderr)</span>
+                                    <button onclick="document.getElementById('dbg-stdout-out').innerHTML=''" style="padding:1px 5px; font-size:0.75em; height:20px; background:transparent; border:none; color:#888;">Clear</button>
+                                </div>
+                                <div id="dbg-stdout-out" class="dbg-terminal" style="color:#fff; background:#030303;">No program output yet.</div>
+                            </div>
+
+                        </div>
+
+                        <!-- Bottom Split: System Calls & Network Activity Tracing -->
+                        <div class="dbg-card" style="flex: 1; margin-top: 10px;">
+                            <div class="dbg-card-header" style="justify-content: space-between;">
+                                <span>🌐 Live Syscalls & Network Interceptions</span>
+                                <div style="display:flex; gap:6px;">
+                                    <button onclick="document.getElementById('dbg-strace-out').innerHTML=''; document.getElementById('dbg-strace-net').innerHTML='';" style="padding:1px 5px; font-size:0.75em; height:20px; background:transparent; border:none; color:#888;">Clear</button>
+                                    <button onclick="runStandaloneTrace()" style="padding: 1px 8px; font-size: 0.75em; height: 20px; background: #ff4444; color: #fff; border: none; font-weight:bold;">⚡ Run Full Trace</button>
+                                </div>
+                            </div>
+                            <div style="display:flex; flex: 1; min-height:0;">
+                                <div style="flex:1; border-right: 1px solid #222; display:flex; flex-direction:column;">
+                                    <div style="font-size:0.75em; color:var(--primary); background:#0c0c0c; padding:3px 6px; border-bottom:1px solid #222;">System Calls (strace)</div>
+                                    <div id="dbg-strace-out" class="dbg-terminal" style="flex:1;">No syscalls recorded yet.</div>
+                                </div>
+                                <div style="flex:1; display:flex; flex-direction:column;">
+                                    <div style="font-size:0.75em; color:#00ffcc; background:#0c0c0c; padding:3px 6px; border-bottom:1px solid #222;">Sockets & Transmitted Traffic</div>
+                                    <div id="dbg-strace-net" class="dbg-terminal" style="flex:1; color:#00ffcc;">No socket traffic intercepted.</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <div id="dbg-strace" class="bp-panel" style="max-width: 100%;">
-                    <div class="bp-group">
-                        <button class="bp-run-btn" style="background: #ff00ff; color: #fff; width: auto;" onclick="runStrace()">Run strace Timeline (10s timeout)</button>
-                    </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div style="flex: 1;">
-                            <label style="color: var(--primary);">Full Syscall Timeline</label>
-                            <div id="dbg-strace-out" class="bp-output" style="height: 400px;"></div>
+                        <!-- Firmware Signature Scan (Binwalk Accordion) -->
+                        <div class="dbg-card" style="margin-top: 10px;">
+                            <div class="dbg-card-header" onclick="toggleBinwalkAccordion()" style="cursor:pointer;">
+                                <span>📦 Firmware Signatures & Extraction (binwalk) ▼</span>
+                            </div>
+                            <div id="dbg-binwalk-drawer" style="display:none; padding:10px; background:#0e0e0e;">
+                                <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+                                    <label class="inline-check"><input type="checkbox" id="dbg-bw-extract"> Extract Payloads (-e)</label>
+                                    <label class="inline-check"><input type="checkbox" id="dbg-bw-entropy"> Plot Entropy (-E)</label>
+                                    <button onclick="runBinwalk()" style="padding:4px 10px; background:#ff4444; color:#fff; border:none; font-weight:bold;">Scan File</button>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <div id="dbg-bw-out" class="dbg-terminal" style="flex:2; height:180px;">Scan output will appear here...</div>
+                                    <div id="dbg-bw-tree" class="dbg-terminal" style="flex:1; height:180px; color:#ffeb73;">Extraction tree will appear here...</div>
+                                </div>
+                            </div>
                         </div>
-                        <div style="flex: 1;">
-                            <label style="color: #00ffcc;">Intercepted Network / Sockets</label>
-                            <div id="dbg-strace-net" class="bp-output" style="height: 400px; color: #00ffcc;"></div>
-                        </div>
-                    </div>
-                </div>
 
-                <div id="dbg-binwalk" class="bp-panel" style="max-width: 100%;">
-                    <div class="bp-group">
-                        <label class="inline-check"><input type="checkbox" id="dbg-bw-extract"> Extract Files (-e)</label>
-                        <label class="inline-check"><input type="checkbox" id="dbg-bw-entropy"> Calculate Entropy (-E)</label>
-                        <button class="bp-run-btn" style="background: #ff00ff; color: #fff; width: auto; margin-left: 15px;" onclick="runBinwalk()">Scan Firmware</button>
                     </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div style="flex: 2;">
-                            <label style="color: var(--primary);">Binwalk Output</label>
-                            <div id="dbg-bw-out" class="bp-output" style="height: 400px;"></div>
-                        </div>
-                        <div style="flex: 1;">
-                            <label style="color: #ffeb73;">Extraction Tree</label>
-                            <div id="dbg-bw-tree" class="bp-output" style="height: 400px; color: #ffeb73;"></div>
-                        </div>
-                    </div>
+
                 </div>
             </div>
             
@@ -287,8 +365,6 @@
             <!-- C/C++ IDE PANEL -->
             <div id="idePanel" class="bp-container" style="padding: 0;">
                 <div class="ide-split-container">
-                    
-                    <!-- LEFT COLUMN: Files & Compiled Bins -->
                     <div class="ide-sidebar">
                         <div class="ide-sidebar-header">
                             <h3>📄 Project Files</h3>
@@ -302,7 +378,6 @@
                         <div id="ide-compiled-list" class="ide-file-list" style="max-height: 150px; background:#0a0a0a;"></div>
                     </div>
                     
-                    <!-- RIGHT COLUMN: Editor & Settings -->
                     <div class="ide-main">
                         <div class="bp-header" style="padding: 15px 15px 5px 15px; margin:0;">
                             <h2 style="color: #00ffcc; margin: 0;">Code Editor & Compiler</h2>
@@ -322,16 +397,13 @@
                             <div style="position:relative;">
                                 <label style="font-size:0.8em; color:var(--primary); display:block; margin-bottom:2px;">Compiler/Assembler</label>
                                 <select id="ide-compiler" onchange="checkCompilerSelection()" style="width:250px;">
-                                    <!-- Populated dynamically -->
                                 </select>
                                 <button id="btnDeleteCustomCompiler" onclick="deleteActiveCustomCompiler()" style="display:none; position:absolute; right:-35px; top:18px; padding:3px 6px; background:#ff3333; color:#fff; border:none;" title="Delete this custom compiler">🗑</button>
                             </div>
                         </div>
 
-                        <!-- FLAGS / OPTIONS GRID (MASSIVE LIST) -->
                         <div id="ide-flags-wrapper" class="ide-flags-container" style="margin:0; border:none; border-bottom: 1px solid #333;">
                             <div class="ide-flags-grid">
-                                <!-- CRITICAL FLAGS PUT FIRST -->
                                 <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-static" class="ide-flag-cb"> -static</label>
                                 <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-pie" class="ide-flag-cb"> -pie</label>
                                 <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-fPIE" class="ide-flag-cb"> -fPIE</label>
@@ -380,12 +452,10 @@
                             </div>
                         </div>
 
-                        <!-- SIMPLE OPTIONS FOR OTHER / CUSTOM -->
                         <div id="ide-simple-options" style="display:none; padding:10px 15px; background:#151515; border-bottom:1px solid #333;">
                             <input type="text" id="ide-custom-flags-text" placeholder="Compiler / Toolchain Arguments & Flags (e.g. -v --target=flat)" style="width:100%;">
                         </div>
 
-                        <!-- EDITOR -->
                         <div id="ide-editor" style="flex: 1; border-bottom: 1px solid var(--border); font-size: 14px;"></div>
                         
                         <div style="padding: 10px; background:#111;">
@@ -434,11 +504,10 @@
             <!-- ASCII TABLE PANEL -->
             <div id="asciiPanel" class="bp-container" style="padding: 10px;">
                 <div class="bp-header">
-                    <h2 style="color: #ff3333; margin: 0;">ASCII Control & Extended Reference</h2>
+                    <h2 style="color: #aaaaaa; margin: 0;">ASCII Control & Extended Reference</h2>
                     <span style="color: #888; font-size: 0.9em;">Full Decimal, Hexadecimal, Octal mapping for all 256 standard and extended characters. Top-to-Bottom flow.</span>
                 </div>
                 <div id="ascii-table-container" style="overflow-y: auto; flex: 1; padding-bottom: 30px;">
-                    <!-- Auto-generated by JS -->
                 </div>
             </div>
 
@@ -453,7 +522,6 @@
                 </div>
                 
                 <div class="conv-grid">
-                    <!-- Numbers Converter -->
                     <div class="conv-box">
                         <div style="margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 5px;">
                             <h3 style="margin: 0; border: none; padding: 0;">Numbers & Math</h3>
@@ -463,7 +531,6 @@
                         <div class="bp-group"><label>Binary</label><input type="text" id="cv-bin" oninput="blockInvalidInput(this, 'bin'); updateConversions('bin')" placeholder="e.g. 0b101010"></div>
                         <div class="bp-group"><label>Octal</label><input type="text" id="cv-oct" oninput="blockInvalidInput(this, 'oct'); updateConversions('oct')" placeholder="e.g. 0o755"></div>
                         
-                        <!-- 8/16/32/64 bit specific boundaries -->
                         <div class="int-grid">
                             <div class="bp-group"><label>Int8</label><input type="text" id="cv-i8" oninput="blockInvalidInput(this, 'decs'); updateConversions('i8')"></div>
                             <div class="bp-group"><label>UInt8</label><input type="text" id="cv-u8" oninput="blockInvalidInput(this, 'decu'); updateConversions('u8')"></div>
@@ -478,7 +545,6 @@
                             <div class="bp-group"><label>UInt64</label><input type="text" id="cv-u64" oninput="blockInvalidInput(this, 'decu'); updateConversions('u64')"></div>
                         </div>
 
-                        <!-- Floats -->
                         <div style="display:flex; gap:10px;">
                             <div class="bp-group" style="flex:1"><label>Float16 (Half)</label><input type="text" id="cv-f16" oninput="blockInvalidInput(this, 'float'); updateConversions('f16')"></div>
                             <div class="bp-group" style="flex:1"><label>Float32 (Single)</label><input type="text" id="cv-f32" oninput="blockInvalidInput(this, 'float'); updateConversions('f32')"></div>
@@ -487,8 +553,6 @@
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 15px;">
-                        
-                        <!-- Endian Swapper -->
                         <div class="conv-box">
                             <h3>Endianness Swapper</h3>
                             <div style="display:flex; gap:10px;">
@@ -497,7 +561,6 @@
                             </div>
                         </div>
 
-                        <!-- String / Hex -->
                         <div class="conv-box" style="flex: 1;">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <h3 style="margin-bottom:0;">String ↔ Hex</h3>
@@ -512,7 +575,6 @@
                             <div class="bp-group"><label>Hex Bytes</label><textarea id="cv-str-hex" oninput="blockInvalidInput(this, 'hex'); updateStrConv('hex')" style="width:100%; height: 50px; background:#111; color:#ff6600; border:1px solid #333; padding:5px;"></textarea></div>
                         </div>
 
-                        <!-- Jump Calculator -->
                         <div class="conv-box">
                             <h3>Relative Jump Calculator</h3>
                             <div class="bp-group"><label>Current Address (Hex)</label><input type="text" id="jc-curr" oninput="blockInvalidInput(this, 'hex'); calcJump()" placeholder="e.g. 0x401000"></div>
@@ -526,7 +588,6 @@
                         </div>
                     </div>
 
-                    <!-- FULL BLOWN SPAWNABLE CALCULATORS -->
                     <div class="conv-box" style="grid-column: span 2;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 5px;">
                             <h3 style="margin: 0; border: none; padding: 0;">RE Scientific Calculators</h3>
@@ -536,7 +597,6 @@
                             </div>
                         </div>
                         <div id="calculators-container" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-start;">
-                            <!-- Calculators injected here dynamically via JS -->
                         </div>
                     </div>
                 </div>

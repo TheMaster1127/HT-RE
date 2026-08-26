@@ -145,7 +145,6 @@ def handle_compile(data):
     options = data.get('options', '')
     cmd_pattern = data.get('cmd_pattern', '').strip()
     
-    # Universal output upload directory
     UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "htre_uploads")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     
@@ -186,12 +185,11 @@ def handle_compile(data):
                 cmd = f"aarch64-linux-gnu-as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && aarch64-linux-gnu-ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
             else:
                 cmd = f"{compiler} {options} \"{src_file}\" -o \"{tmp_out}\""
-        else: # other / custom
+        else:
             cmd = f"{compiler} {options} \"{src_file}\""
 
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         
-        # Intelligent Output Detection: If tmp_out doesn't exist, search for any newly generated binary
         if not os.path.exists(tmp_out):
             candidates = [
                 os.path.join(tmpdir, f) for f in os.listdir(tmpdir) 
@@ -232,6 +230,16 @@ def restore_patch(data):
     if os.path.exists(backup) and os.path.exists(target):
         try:
             shutil.copy2(backup, target)
+            return {'success': True}
+        except Exception as e:
+            return {'error': str(e)}
+    return {'error': 'File not found'}
+
+def delete_patch_backup(data):
+    backup_path = data.get('backup_path', '')
+    if os.path.exists(backup_path):
+        try:
+            os.remove(backup_path)
             return {'success': True}
         except Exception as e:
             return {'error': str(e)}

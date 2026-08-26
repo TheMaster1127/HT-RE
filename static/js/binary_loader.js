@@ -22,11 +22,10 @@ function saveCurrentProjectState() {
         openProjects[binaryPath].converterState = exportConverterState();
     }
 
-    // 4. Trace & Hook UI tab state
-    openProjects[binaryPath].debugState = {
-        activeTab: document.querySelector('.bp-tab.active')?.innerText.includes('Debugger') ? 'debugger' : 
-                  (document.querySelector('.bp-tab.active')?.innerText.includes('Syscalls') ? 'strace' : 'binwalk')
-    };
+    // 4. Debugger state (Breakpoints, options, registers)
+    if (typeof exportDebugState === 'function') {
+        openProjects[binaryPath].debugState = exportDebugState();
+    }
 }
 
 async function loadBinary() {
@@ -98,7 +97,7 @@ async function loadBinary() {
             try { loadPatchHistory(); } catch(e) {}
         }
 
-        // PROJECT WORKSPACE TABS LOGIC (Brand new binary starts fresh with converterState: null)
+        // PROJECT WORKSPACE TABS LOGIC
         if (!openProjects[binaryPath]) {
             openProjects[binaryPath] = {
                 path: binaryPath,
@@ -106,7 +105,7 @@ async function loadBinary() {
                 scrolls: {},
                 activeTab: 'disasm',
                 converterState: null,
-                debugState: { activeTab: 'debugger' }
+                debugState: null
             };
         }
         renderProjectTabs();
@@ -114,6 +113,11 @@ async function loadBinary() {
         // RESTORE CONVERTER / CALCULATORS STATE
         if (typeof importConverterState === 'function') {
             importConverterState(openProjects[binaryPath].converterState);
+        }
+
+        // RESTORE DEBUGGER / BREAKPOINTS STATE
+        if (typeof importDebugState === 'function') {
+            importDebugState(openProjects[binaryPath].debugState);
         }
 
         // ISOLATE & RESTORE FLOATING WINDOWS FOR THIS BINARY
@@ -179,15 +183,12 @@ function renderProjectTabs() {
 
         tab.onclick = () => {
             if (!isActive) {
-                // 1. SAVE ACTIVE PROJECT BEFORE SWAPPING
                 saveCurrentProjectState();
 
-                // 2. Deactivate previous scroller so its DOM teardown won't leak events
                 if (mainScroller) {
                     mainScroller.isReady = false;
                 }
 
-                // 3. Switch project to target
                 document.getElementById('binaryPath').value = proj.path;
                 loadBinary();
             }
@@ -200,7 +201,6 @@ function closeProject(e, path) {
     e.stopPropagation();
     delete openProjects[path];
 
-    // Clean up and close all floating windows belonging to this specific project
     Object.keys(openWindows).forEach(winId => {
         if (openWindows[winId].binary === path) {
             closeWindow(winId);
@@ -224,7 +224,6 @@ function handleFilePicked(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // SAVE ACTIVE PROJECT BEFORE FILE UPLOAD
     saveCurrentProjectState();
 
     const formData = new FormData();

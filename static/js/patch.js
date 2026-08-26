@@ -25,7 +25,7 @@ function strToHex() {
 async function runBinpatch(mode) {
     if(!binaryPath) return alert("Please load a binary first.");
     let payload = { binary_path: binaryPath, mode: mode };
-    
+
     if(mode === 'write') {
         payload.offset = document.getElementById('bp-w-offset').value;
         payload.hex = document.getElementById('bp-w-hex').value;
@@ -55,7 +55,7 @@ async function runBinpatch(mode) {
 
     document.getElementById('bp-output').innerText = "Running binpatch...";
     trackAction("BINPATCH", { mode: mode, payload: payload });
-    
+
     const res = await fetch(`${API}/binpatch`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
     document.getElementById('bp-output').innerText = data.output || data.error;
@@ -113,7 +113,6 @@ const gasDefault = `.data\nmsg:\n    .ascii "Hello World!\\n"\n    msg_len = . -
 const armGasDefault = `.data\nmsg:\n    .ascii "Hello World!\\n"\n    msg_len = . - msg\n\n.text\n.global _start\n_start:\n    mov r0, #1\n    ldr r1, =msg\n    ldr r2, =msg_len\n    mov r7, #4\n    swi 0\n    mov r0, #0\n    mov r7, #1\n    swi 0`;
 const otherDefault = `// Custom Code / Script / Toolchain Input\n\n`;
 
-// Load files and selection from persistent storage
 let ideFiles = JSON.parse(localStorage.getItem('htre_ide_files') || 'null') || [ { name: "main.c", lang: "c", compiler: "gcc", content: cDefault } ];
 let activeIdeFile = parseInt(localStorage.getItem('htre_active_ide_file') || '0', 10);
 if (isNaN(activeIdeFile) || activeIdeFile < 0 || activeIdeFile >= ideFiles.length) {
@@ -134,7 +133,7 @@ function initIdeEditor() {
         ideEditor = ace.edit("ide-editor");
         ideEditor.setTheme("ace/theme/vibrant_ink");
         ideEditor.session.setMode("ace/mode/c_cpp");
-        
+
         ideEditor.on("change", () => {
             if(ideFiles[activeIdeFile]) {
                 ideFiles[activeIdeFile].content = ideEditor.getValue();
@@ -145,14 +144,14 @@ function initIdeEditor() {
                 trackAction("IDE_TYPING", { file: ideFiles[activeIdeFile].name, length: ideEditor.getValue().length });
             }, 2000);
         });
-        
+
         ideEditor.on("copy", (text) => { trackAction("IDE_COPY", { text: text, length: text.length }); });
         ideEditor.on("paste", (text) => { trackAction("IDE_PASTE", { text: text, length: text.length }); });
     }
     populateCompilersDropdown();
     renderIdeFileManager();
     renderCompiledBinaries();
-    
+
     switchIdeFile(activeIdeFile);
 }
 
@@ -177,7 +176,7 @@ function createNewIdeFile() {
     let lang = fName.endsWith('.cpp') ? 'cpp' : (fName.endsWith('.asm') || fName.endsWith('.s') ? 'asm' : (fName.endsWith('.c') ? 'c' : 'other'));
     let comp = lang === 'cpp' ? 'g++' : (lang === 'asm' ? 'nasm' : (lang === 'c' ? 'gcc' : 'custom'));
     let def = lang === 'cpp' ? cppDefault : (lang === 'asm' ? nasmDefault : (lang === 'c' ? cDefault : otherDefault));
-    
+
     ideFiles.push({ name: fName, lang: lang, compiler: comp, content: def });
     activeIdeFile = ideFiles.length - 1;
     saveIdeFilesState();
@@ -188,22 +187,22 @@ function switchIdeFile(idx) {
     if (idx < 0 || idx >= ideFiles.length) return;
     activeIdeFile = idx;
     saveIdeFilesState();
-    
+
     const f = ideFiles[idx];
     document.getElementById('ide-lang').value = f.lang;
     populateCompilersDropdown();
     document.getElementById('ide-compiler').value = f.compiler;
-    
+
     let aceMode = "ace/mode/c_cpp";
     if (f.lang === 'asm') aceMode = "ace/mode/assembly_x86";
     else if (f.lang === 'other') aceMode = "ace/mode/text";
-    
+
     ideEditor.session.setMode(aceMode);
     ideEditor.setValue(f.content, -1);
-    
+
     const flagsWrapper = document.getElementById('ide-flags-wrapper');
     const simpleFlags = document.getElementById('ide-simple-options');
-    
+
     if (flagsWrapper && simpleFlags) {
         if (f.lang === 'c' || f.lang === 'cpp') {
             flagsWrapper.style.display = 'block';
@@ -211,12 +210,12 @@ function switchIdeFile(idx) {
         } else if (f.lang === 'other') {
             flagsWrapper.style.display = 'none';
             simpleFlags.style.display = 'block';
-        } else { // asm
+        } else {
             flagsWrapper.style.display = 'none';
             simpleFlags.style.display = 'none';
         }
     }
-    
+
     renderIdeFileManager();
     trackAction("IDE_SWITCH_FILE", { file: f.name });
 }
@@ -244,7 +243,7 @@ function populateCompilersDropdown() {
     const select = document.getElementById('ide-compiler');
     if (!select) return;
     const currVal = select.value;
-    
+
     select.innerHTML = `
         <option value="gcc">GCC (C)</option>
         <option value="g++">G++ (C++)</option>
@@ -257,25 +256,25 @@ function populateCompilersDropdown() {
         <option value="aarch64-linux-gnu-gcc">AArch64 GCC</option>
         <option value="aarch64-linux-gnu-as">AArch64 GAS</option>
     `;
-    
+
     customCompilers.forEach(cc => {
         const opt = document.createElement('option');
         opt.value = cc.name;
         opt.innerText = cc.name + " (Custom)";
         select.appendChild(opt);
     });
-    
+
     const addNewOpt = document.createElement('option');
     addNewOpt.value = "ADD_CUSTOM";
     addNewOpt.innerText = "➕ Add Custom Compiler...";
     select.appendChild(addNewOpt);
-    
+
     if (Array.from(select.options).some(o => o.value === currVal)) {
         select.value = currVal;
     } else {
         select.value = 'gcc';
     }
-    
+
     checkCustomDeleteButton();
 }
 
@@ -302,10 +301,10 @@ function deleteActiveCustomCompiler() {
     const select = document.getElementById('ide-compiler');
     const name = select.value;
     if (!confirm(`Are you sure you want to delete custom compiler '${name}'?`)) return;
-    
+
     customCompilers = customCompilers.filter(c => c.name !== name);
     localStorage.setItem('htre_custom_compilers', JSON.stringify(customCompilers));
-    
+
     select.value = 'gcc';
     populateCompilersDropdown();
     updateIdeDefaults();
@@ -316,19 +315,19 @@ function saveCustomCompiler() {
     const path = document.getElementById('cc-path').value.trim();
     const cmdPattern = document.getElementById('cc-cmd').value.trim();
     const code = document.getElementById('cc-code').value;
-    
+
     if (!name || !path) return alert("Name and Path are required.");
     if (customCompilers.find(c => c.name === name)) {
         return alert("A custom compiler with that name already exists.");
     }
-    
+
     const cc = { name, path, cmdPattern: cmdPattern || '{compiler} {options} {input} -o {output}', code };
     customCompilers.push(cc);
     localStorage.setItem('htre_custom_compilers', JSON.stringify(customCompilers));
-    
+
     document.getElementById('customCompilerModal').style.display = 'none';
     populateCompilersDropdown();
-    
+
     document.getElementById('ide-compiler').value = name;
     updateIdeDefaults();
     checkCustomDeleteButton();
@@ -340,7 +339,7 @@ function updateIdeDefaults() {
     const compName = document.getElementById('ide-compiler').value;
     let def = cDefault;
     let mode = "ace/mode/c_cpp";
-    
+
     const flagsWrapper = document.getElementById('ide-flags-wrapper');
     const simpleFlags = document.getElementById('ide-simple-options');
 
@@ -351,7 +350,7 @@ function updateIdeDefaults() {
         } else if (lang === 'other') {
             flagsWrapper.style.display = 'none';
             simpleFlags.style.display = 'block';
-        } else { // asm
+        } else {
             flagsWrapper.style.display = 'none';
             simpleFlags.style.display = 'none';
         }
@@ -367,19 +366,19 @@ function updateIdeDefaults() {
         else if (compName.includes('arm')) def = armGasDefault;
         else def = nasmDefault;
     }
-    
+
     const custom = customCompilers.find(c => c.name === compName);
     if (custom && custom.code) {
         def = custom.code;
     }
-    
+
     if(ideFiles[activeIdeFile]) {
         ideFiles[activeIdeFile].lang = lang;
         ideFiles[activeIdeFile].compiler = compName;
-        
+
         const knownDefaults = [cDefault, cppDefault, nasmDefault, fasmDefault, gasDefault, armGasDefault, otherDefault];
         customCompilers.forEach(c => knownDefaults.push(c.code));
-        
+
         if (knownDefaults.includes(ideFiles[activeIdeFile].content) || ideFiles[activeIdeFile].content.trim() === '') {
             ideFiles[activeIdeFile].content = def;
             ideEditor.setValue(def, -1);
@@ -411,7 +410,7 @@ async function compileCodeOnly() {
     const code = ideEditor.getValue();
     const lang = document.getElementById('ide-lang').value;
     let compName = document.getElementById('ide-compiler').value;
-    
+
     let execPath = compName;
     let cmdPattern = '';
     const custom = customCompilers.find(c => c.name === compName);
@@ -419,7 +418,7 @@ async function compileCodeOnly() {
         execPath = custom.path;
         cmdPattern = custom.cmdPattern || '';
     }
-    
+
     const options = (lang === 'asm') ? '' : getCompiledFlags(); 
 
     document.getElementById('ide-output').innerText = "Compiling with " + compName + "...\nFlags: " + options;
@@ -431,14 +430,13 @@ async function compileCodeOnly() {
         body: JSON.stringify({ code, lang, compiler: execPath, options, cmd_pattern: cmdPattern })
     });
     const data = await res.json();
-    
+
     if (data.error) {
         document.getElementById('ide-output').innerText = data.error;
     } else {
         document.getElementById('ide-output').innerText = data.output;
         const outName = data.path.split('/').pop();
-        
-        // Push and persist compiled artifact
+
         compiledBinariesList.unshift({ name: outName, path: data.path, compiler: compName, timestamp: Date.now() });
         if (compiledBinariesList.length > 30) compiledBinariesList = compiledBinariesList.slice(0, 30);
         saveCompiledBinariesState();
@@ -457,12 +455,12 @@ function renderCompiledBinaries() {
     const list = document.getElementById('ide-compiled-list');
     if (!list) return;
     list.innerHTML = '';
-    
+
     if (compiledBinariesList.length === 0) {
         list.innerHTML = '<div style="color:#666; font-style:italic; padding: 5px;">No binaries compiled yet.</div>';
         return;
     }
-    
+
     compiledBinariesList.forEach((bin, idx) => {
         const item = document.createElement('div');
         item.className = 'ide-file-item compiled';
@@ -497,8 +495,30 @@ async function loadPatchHistory() {
     }
     data.history.forEach(h => {
         const name = h.split('/').pop();
-        list.innerHTML += `<div class="history-item-row"><span>${name}</span><button class="history-restore-btn" onclick="restorePatch('${h}')">Restore</button></div>`;
+        list.innerHTML += `
+            <div class="history-item-row">
+                <span title="${h}">${escapeHTML(name)}</span>
+                <div>
+                    <button class="history-restore-btn" onclick="restorePatch('${h}')">Restore</button>
+                    <button class="history-delete-btn" onclick="deletePatchBackup('${h}')" title="Delete backup file">🗑</button>
+                </div>
+            </div>
+        `;
     });
+}
+
+async function deletePatchBackup(backupPath) {
+    if (!confirm(`Are you sure you want to permanently delete this backup?\n${backupPath}`)) return;
+    trackAction("DELETE_PATCH_BACKUP", { backup: backupPath });
+    const res = await fetch(`${API}/delete_patch_backup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ backup_path: backupPath })
+    });
+    const data = await res.json();
+    if (data.success) {
+        loadPatchHistory();
+    } else {
+        alert("Failed to delete backup: " + data.error);
+    }
 }
 
 async function restorePatch(backupPath) {

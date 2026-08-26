@@ -8,12 +8,11 @@ from backend.disasm_service import handle_nm, handle_resolve_strings, handle_dis
 from backend.ghidra_service import handle_decompile_single, handle_decompile_batch
 from backend.generic_service import handle_generic_cmd
 from backend.export_service import handle_export
-from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw, handle_compile, get_patch_history, restore_patch, track_action
-from backend.debug_service import handle_debug_start, handle_debug_cmd, handle_debug_stop, handle_debug_poll, handle_trace_run, handle_binwalk
+from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw, handle_compile, get_patch_history, restore_patch, delete_patch_backup, track_action
+from backend.debug_service import handle_debug_start, handle_debug_cmd, handle_debug_stop, handle_debug_poll, handle_debug_registers, handle_debug_set_reg, handle_trace_run, handle_binwalk
 
 app = Flask(__name__, static_url_path='', static_folder=STATIC_FOLDER)
 
-# Directory for file picker uploads
 UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "htre_uploads")
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
@@ -109,6 +108,10 @@ def api_patch_history():
 def api_restore_patch():
     return jsonify(restore_patch(request.json))
 
+@app.route('/api/delete_patch_backup', methods=['POST'])
+def api_delete_patch_backup():
+    return jsonify(delete_patch_backup(request.json))
+
 @app.route('/api/track', methods=['POST'])
 def api_track():
     return jsonify(track_action(request.json))
@@ -129,6 +132,14 @@ def api_debug_stop():
 @app.route('/api/debug/poll', methods=['POST'])
 def api_debug_poll():
     return jsonify(handle_debug_poll(request.json))
+
+@app.route('/api/debug/registers', methods=['POST'])
+def api_debug_registers():
+    return jsonify(handle_debug_registers(request.json))
+
+@app.route('/api/debug/set_reg', methods=['POST'])
+def api_debug_set_reg():
+    return jsonify(handle_debug_set_reg(request.json))
 
 @app.route('/api/debug/trace', methods=['POST'])
 def api_debug_trace():

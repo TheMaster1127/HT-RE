@@ -66,8 +66,9 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .toolbar { padding: 5px 10px; background: #151515; border-bottom: 1px solid var(--border); display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .sub-toolbar { padding: 5px 10px; background: #111; border-bottom: 1px solid var(--border); display: none; align-items: center; gap: 10px; font-size: 0.85em; }
 
-.tab-btn.dbg-btn { color: #ff00ff; border-color: #ff00ff; }
-.tab-btn.dbg-btn.active { color: #fff; background: #ff00ff; border-color: #ff00ff; }
+/* TAB BUTTON ACCENT COLORS */
+.tab-btn.dbg-btn { color: #ff4444; border-color: #ff4444; }
+.tab-btn.dbg-btn.active { color: #fff; background: #ff4444; border-color: #ff4444; }
 
 .tab-btn.patch-btn { color: var(--primary); border-color: var(--primary); }
 .tab-btn.patch-btn.active { color: #000; background: var(--primary); border-color: var(--primary); }
@@ -81,8 +82,8 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .tab-btn.conv-btn { color: #ffeb73; border-color: #ffeb73; }
 .tab-btn.conv-btn.active { color: #000; background: #ffeb73; border-color: #ffeb73; }
 
-.tab-btn.ascii-btn { color: #ff3333; border-color: #ff3333; }
-.tab-btn.ascii-btn.active { color: #000; background: #ff3333; border-color: #ff3333; }
+.tab-btn.ascii-btn { color: #aaaaaa; border-color: #aaaaaa; }
+.tab-btn.ascii-btn.active { color: #000; background: #aaaaaa; border-color: #aaaaaa; }
 
 .output-container { flex: 1; overflow: auto; padding: 0 10px; white-space: pre; font-size: 0.9em; line-height: 20px; position: relative; }
 .output-line { height: 20px; display: block; white-space: pre; }
@@ -140,7 +141,7 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 
 .ascii-row { display: grid; grid-template-columns: 35px 35px 35px 45px minmax(0, 1fr); gap: 5px; padding: 3px 5px; border-bottom: 1px solid #222; }
 .ascii-row:hover { background: #222; }
-.ascii-header { font-weight: bold; color: #ff3333; border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 5px; background: #111; }
+.ascii-header { font-weight: bold; color: #aaaaaa; border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 5px; background: #111; }
 .ascii-ctrl { color: #ffeb73; font-weight: bold; }
 .ascii-char { color: #0f0; font-weight: bold; font-size: 1.1em; }
 .ascii-desc { color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

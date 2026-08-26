@@ -9,18 +9,20 @@
 3. [Multi-Project State Management & Workspaces (`state.js`, `binary_loader.js`)](#3-multi-project-state-management--workspaces-statejs-binary_loaderjs)
 4. [Backend REST API Pipeline (`server.py`)](#4-backend-rest-api-pipeline-serverpy)
 5. [GNU Binutils & Toolchain Probing Engine (`disasm_service.py`, `utils.py`)](#5-gnu-binutils--toolchain-probing-engine-disasm_servicepy-utilspy)
-6. [Ghidra Headless Bridge & AST Stitching (`ghidra_service.py`, `Decompile*.java`)](#6-ghidra-headless-bridge--ast-stitching-ghidra_servicepy-decompilejava)
-7. [Persistent SHA-256 Caching Architecture](#7-persistent-sha-256-caching-architecture)
-8. [Virtual DOM Scroller & Viewport Engine (`scroller.js`, `disassembly.js`)](#8-virtual-dom-scroller--viewport-engine-scrollerjs-disassemblyjs)
-9. [Floating Multi-Window Desktop Environment & Taskbar Dock (`modal.js`)](#9-floating-multi-window-desktop-environment--taskbar-dock-modaljs)
-10. [Ace Editor Integration & Token Context Converters](#10-ace-editor-integration--token-context-converters)
-11. [Embedded Multi-File C/C++ & Assembly IDE (`patch.js`, `patch_service.py`)](#11-embedded-multi-file-cc--assembly-ide-patchjs-patch_servicepy)
-12. [CPU Memory Emulation & IEEE 754 Converter Engine (`converter.js`)](#12-cpu-memory-emulation--ieee-754-converter-engine-converterjs)
-13. [Infinite Spawnable RE Scientific Calculators (`converter.js`)](#13-infinite-spawnable-re-scientific-calculators-converterjs)
-14. [Multi-Encoding Strings & Found Strings Engine (`strings.js`, `converter.js`)](#14-multi-encoding-strings--found-strings-engine-stringsjs-converterjs)
-15. [Dis/Assembler Tool & `binpatch` Integration (`patch.js`, `patch_service.py`)](#15-disassembler-tool--binpatch-integration-patchjs-patch_servicepy)
-16. [Granular JSON Workspace Exporter (`export.js`, `export_service.py`)](#16-granular-json-workspace-exporter-exportjs-export_servicepy)
-17. [Invasive User Action Tracking Subsystem (`state.js`, `server.py`)](#17-invasive-user-action-tracking-subsystem-statejs-serverpy)
+6. [Dynamic Emulation, GDB/MI & Tracing Subsystem (`debug_service.py`, `debug.js`)](#6-dynamic-emulation-gdbmi--tracing-subsystem-debug_servicepy-debugjs)
+7. [Firmware & Signature Scanner Subsystem (`debug_service.py`, `debug.js`)](#7-firmware--signature-scanner-subsystem-debug_servicepy-debugjs)
+8. [Ghidra Headless Bridge & AST Stitching (`ghidra_service.py`, `Decompile*.java`)](#8-ghidra-headless-bridge--ast-stitching-ghidra_servicepy-decompilejava)
+9. [Persistent SHA-256 Caching Architecture](#9-persistent-sha-256-caching-architecture)
+10. [Virtual DOM Scroller & Viewport Engine (`scroller.js`, `disassembly.js`)](#10-virtual-dom-scroller--viewport-engine-scrollerjs-disassemblyjs)
+11. [Floating Multi-Window Desktop Environment & Taskbar Dock (`modal.js`)](#11-floating-multi-window-desktop-environment--taskbar-dock-modaljs)
+12. [Ace Editor Integration & Token Context Converters](#12-ace-editor-integration--token-context-converters)
+13. [Embedded Multi-File C/C++ & Assembly IDE (`patch.js`, `patch_service.py`)](#13-embedded-multi-file-cc--assembly-ide-patchjs-patch_servicepy)
+14. [CPU Memory Emulation & IEEE 754 Converter Engine (`converter.js`)](#14-cpu-memory-emulation--ieee-754-converter-engine-converterjs)
+15. [Infinite Spawnable RE Scientific Calculators (`converter.js`)](#15-infinite-spawnable-re-scientific-calculators-converterjs)
+16. [Multi-Encoding Strings & Found Strings Engine (`strings.js`, `converter.js`)](#16-multi-encoding-strings--found-strings-engine-stringsjs-converterjs)
+17. [Dis/Assembler Tool & `binpatch` Integration (`patch.js`, `patch_service.py`)](#17-disassembler-tool--binpatch-integration-patchjs-patch_servicepy)
+18. [Granular JSON Workspace Exporter (`export.js`, `export_service.py`)](#18-granular-json-workspace-exporter-exportjs-export_servicepy)
+19. [Invasive User Action Tracking Subsystem (`state.js`, `server.py`)](#19-invasive-user-action-tracking-subsystem-statejs-serverpy)
 
 ---
 
@@ -33,8 +35,10 @@ HT-RE is built on a **Decoupled Asynchronous Client-Server Architecture**:
 |                                FRONTEND (Client)                                   |
 | - Pure Vanilla ECMAScript (Zero Webpack, Babel, React, or Node.js dependencies)   |
 | - Virtual DOM Scroller (sub-millisecond DOM recycling for 100k+ line disasm)       |
-| - Floating Multi-Window Manager (MWM) with independent Ace Editor instances       |
-| - Multi-tenant Project Workspace Registry with per-binary state serialization     |
+| - Interactive GDB/MI & QEMU Dashboard with Live CPU Register Mutator & Timestamps  |
+| - Dual-Terminal View: Target Program I/O (stdout/stderr) & GDB Engine Log Streams  |
+| - Floating Multi-Window Manager (MWM) with independent Ace Editor instances        |
+| - Multi-tenant Project Workspace Registry with per-binary state serialization      |
 +-----------------------------------------+------------------------------------------+
                                           | HTTP REST (JSON Payloads)
                                           v
@@ -42,16 +46,18 @@ HT-RE is built on a **Decoupled Asynchronous Client-Server Architecture**:
 |                                BACKEND (Server)                                    |
 | - Python 3 / Flask REST API running on localhost:8000                              |
 | - Dynamic GNU Toolchain detection (x86_64, ARM, AArch64)                           |
+| - Subprocess orchestrator (objdump, nm, readelf, xxd, strings, as, objcopy)         |
+| - Multi-Process Emulation Orchestrator (QEMU User-Mode + GDB/MI Daemon Threads)    |
+| - Non-blocking FIFO Queue Pipes for stdout, stderr (-strace), and GDB MI channels  |
 | - SHA-256 persistent disk cache (.htre_cache/<hash>.json)                          |
-| - Subprocess orchestrator (objdump, nm, readelf, xxd, strings, as, objcopy)        |
-| - Headless Ghidra JVM bridge (analyzeHeadless + Java scripts)                      |
+| - Headless Ghidra JVM bridge (analyzeHeadless + Java scripts)                       |
 +------------------------------------------------------------------------------------+
 ```
 
 ### Key Architectural Principles
 - **Zero Frontend Build Step:** All JavaScript is executed natively by the browser. HTML templates are static and styled with modular CSS (`main.css`, `modal.css`, `patch.css`).
-- **Heavy Task Offloading:** Decompilation, disassembling, assembling, and regex-based string resolutions occur strictly in background subprocesses, keeping the frontend UI thread fluid at 60 FPS.
-- **Persistent State Guarantee:** User edits, open tabs, scroll positions, custom compilers, IDE files, and calculator setups survive browser refreshes and workspace transitions.
+- **Heavy Task Offloading:** Decompilation, disassembling, assembling, QEMU emulation, GDB MI execution, regex-based string resolutions, and firmware extraction occur strictly in background subprocesses, keeping the frontend UI thread fluid at 60 FPS.
+- **Persistent State Guarantee:** User edits, open tabs, scroll positions, debugger breakpoints, CPU register states, custom compilers, IDE files, and calculator setups survive browser refreshes and workspace transitions.
 
 ---
 
@@ -71,6 +77,7 @@ HT-RE/
 ├── backend/                    # Python Backend Modules
 │   ├── __init__.py             # Package marker
 │   ├── config.py               # Constants (Port 8000, history limits, static folder paths)
+│   ├── debug_service.py        # GDB/MI, QEMU user-mode runner, register parser, strace & binwalk
 │   ├── disasm_service.py       # objdump wrappers, symbol parsers, string resolution engine
 │   ├── export_service.py       # Granular JSON workspace exporter engine
 │   ├── generic_service.py      # readelf, stat, file, and ldd inspection wrappers
@@ -82,7 +89,7 @@ HT-RE/
     ├── css/
     │   ├── main.css            # Layout, project tabs, taskbar dock, sidebar, and scroller themes
     │   ├── modal.css           # Floating draggable windows, tab reordering, and Ace editor styling
-    │   └── patch.css           # Binpatch grids, IDE split containers, and found strings styles
+    │   └── patch.css           # Debugger layout, CPU registers grid, IDE containers, binpatch styles
     └── js/
         ├── state.js            # Global state stores, project workspaces, and regex constants
         ├── scroller.js         # Virtual DOM Scroller engine with live line highlighting
@@ -92,6 +99,7 @@ HT-RE/
         ├── modal.js            # Multi-window manager, draggable tabs, taskbar, and Ace editor
         ├── strings.js          # Cross-referencing `strings` with `objdump` rip-relative targets
         ├── export.js           # Selective JSON workspace export dialog and blob generator
+        ├── debug.js            # Interactive GDB/MI, register mutator, Program I/O, strace & binwalk
         ├── patch.js            # Binpatch GUI bindings, raw GNU assembler/disassembler, and IDE
         ├── converter.js        # Data type converters, Float16/32/64, and RE calculators
         ├── binary_loader.js    # Binary loading, file picker uploads, and project switching
@@ -109,11 +117,19 @@ HT-RE features a multi-tenant project manager allowing multiple binaries to rema
 openProjects[binaryPath] = {
     path: "/path/to/binary",
     name: "binary_name",
-    activeTab: "disasm", // Remembers active view (disasm, hexdump, conv, ide, etc.)
+    activeTab: "debug", // Remembers active view (disasm, hexdump, conv, ide, debug, etc.)
     scrolls: {
         disasm: 4200,    // Exact scrollTop per tab
         hexdump: 120,
         strings: 0
+    },
+    debugState: {
+        breakpoints: ["0x401140", "main"],
+        useQemu: true,
+        traceSyscalls: true,
+        traceNetwork: true,
+        showTimestamps: true,
+        terminalFontSize: 14
     },
     converterState: {    // Serialized calculator & converter setup
         currentVal: "0",
@@ -131,10 +147,11 @@ When a user switches from Binary A to Binary B:
 1. `saveCurrentProjectState()` serializes:
    - Active view tab name (`currentTab`).
    - Exact scroll position of the active view into `openProjects[Binary A].scrolls[currentTab]`.
+   - Complete debug state (active breakpoints, QEMU settings, font scales) via `exportDebugState()`.
    - Complete converter state and all active calculators via `exportConverterState()`.
 2. The scroller for Binary A is marked inactive (`mainScroller.isReady = false`) to prevent asynchronous DOM teardowns from leaking scroll events.
 3. Binary B's context is loaded without re-fetching static disassembly or losing open modal windows.
-4. `importConverterState(openProjects[Binary B].converterState)` restores Binary B's calculators cleanly without duplicating or inheriting Binary A's data.
+4. `importConverterState(openProjects[Binary B].converterState)` and `importDebugState(openProjects[Binary B].debugState)` restore Binary B cleanly without data cross-contamination.
 
 ---
 
@@ -158,9 +175,18 @@ All API routes receive and return strict JSON payloads:
 | `/api/assemble` | `POST` | `handle_assemble` | Assembles mnemonic text to raw machine code bytes using GNU `as` and `objcopy`. |
 | `/api/disassemble_raw` | `POST` | `handle_disassemble_raw` | Disassembles arbitrary hexadecimal instruction bytes into assembly mnemonics. |
 | `/api/compile` | `POST` | `handle_compile` | Compiles source files (`.c`, `.cpp`, `.asm`) with user-selected toolchains and flags into executable ELF binaries. |
+| `/api/debug/start` | `POST` | `handle_debug_start` | Spawns QEMU user-mode listening on a dynamic port and attaches GDB/MI. |
+| `/api/debug/cmd` | `POST` | `handle_debug_cmd` | Dispatches GDB/MI or console commands to the active debug session pipe. |
+| `/api/debug/poll` | `POST` | `handle_debug_poll` | Returns queued GDB output, target stdout, QEMU strace lines, and register maps. |
+| `/api/debug/registers` | `POST` | `handle_debug_registers` | Queries CPU registers synchronously and returns structured dictionary. |
+| `/api/debug/set_reg` | `POST` | `handle_debug_set_reg` | Mutates a specific CPU register (`set $reg = val`) mid-execution. |
+| `/api/debug/stop` | `POST` | `handle_debug_stop` | Terminates active GDB and QEMU subprocesses. |
+| `/api/debug/trace` | `POST` | `handle_trace_run` | Executes standalone `strace` or `qemu -strace` with network socket parsing. |
+| `/api/debug/binwalk` | `POST` | `handle_binwalk` | Runs `binwalk` for signatures, extraction (`-e`), or entropy (`-E`). |
 | `/api/binpatch` | `POST` | `handle_binpatch` | Proxies patch, find, and resolve commands to the `binpatch` utility. |
 | `/api/patch_history` | `POST` | `get_patch_history` | Lists all `.bak` and timestamped backups for a patched binary. |
 | `/api/restore_patch` | `POST` | `restore_patch` | Overwrites current binary with a selected backup file. |
+| `/api/delete_patch_backup` | `POST` | `delete_patch_backup` | Deletes a specific `.bak` or timestamped backup file from disk. |
 | `/api/export` | `POST` | `handle_export` | Bundles selective analysis components into an offline JSON report. |
 | `/api/track` | `POST` | `track_action` | Appends user interaction metrics to `tracking.json`. |
 
@@ -169,7 +195,7 @@ All API routes receive and return strict JSON payloads:
 ## 5. GNU Binutils & Toolchain Probing Engine (`disasm_service.py`, `utils.py`)
 
 ### Cross-Architecture Probing
-Located in `backend/utils.py`. When disassembling or assembling binaries across architectures, HT-RE dynamically queries the host system:
+Located in `backend/utils.py`. When disassembling, assembling, compiling, or tracing binaries across architectures, HT-RE dynamically queries the host system:
 ```python
 def get_objdump_cmd(arch):
     if arch == 'aarch64':
@@ -180,7 +206,7 @@ def get_objdump_cmd(arch):
             return 'arm-linux-gnueabihf-objdump'
     return 'objdump'
 ```
-Similar fallbacks exist for `get_as_cmd(arch)` and `get_objcopy_cmd(arch)`.
+Similar dynamic probing logic exists for `get_as_cmd(arch)`, `get_objcopy_cmd(arch)`, `get_qemu_binary(arch)`, and `get_gdb_binary()`.
 
 ### RIP-Relative String Resolution
 In x86-64 disassembly, RIP-relative addressing (e.g. `lea rax, [rip + 0x2e15] # 0x404020`) is intercepted via regex:
@@ -194,7 +220,74 @@ Addresses are cross-referenced with `strings -a -t x` output. When a match is fo
 
 ---
 
-## 6. Ghidra Headless Bridge & AST Stitching (`ghidra_service.py`, `Decompile*.java`)
+## 6. Dynamic Emulation, GDB/MI & Tracing Subsystem (`debug_service.py`, `debug.js`)
+
+HT-RE features a complete, decoupled interactive execution and debugging suite:
+
+### 1. Dual-Stream QEMU & GDB/MI Pipe Architecture
+```text
++------------------------------------------------------------------------------------+
+|                         BACKEND DEBUG SESSION RUNNER                               |
+|                                                                                    |
+|  [ Target Binary ]                                                                 |
+|         ^                                                                          |
+|         | (User-Mode Emulation)                                                    |
+|  [ QEMU Process ] <--- (GDB RSP Protocol: localhost:PORT) ---> [ GDB/MI Process ] |
+|    |           |                                                      |            |
+|    | stdout    | stderr (-strace)                                     | stdout/MI  |
+|    v           v                                                      v            |
+|  [ stdout_q ] [ trace_q ]                                           [ gdb_q ]      |
++----+-----------+------------------------------------------------------+------------+
+     |           |                                                      |
+     +-----------+-----------------------+------------------------------+
+                                         | JSON Poll Response
+                                         v
++------------------------------------------------------------------------------------+
+|                                FRONTEND DASHBOARD                                  |
+|  - CPU Registers Table (live hex values + inline mutator)                          |
+|  - Breakpoints Table (with '*' address normalization)                              |
+|  - GDB Execution Log (decoded octal sequences + clean status events)               |
+|  - Program I/O Terminal (real-time stdout/stderr from target process)              |
+|  - System Call & Socket Activity Log (live strace hooks)                           |
++------------------------------------------------------------------------------------+
+```
+
+### 2. Multi-Architecture QEMU User-Mode Integration
+When debugging foreign-architecture binaries (or running x86 binaries isolated from the host CPU), HT-RE dynamically binds a free TCP port (`get_free_port()`) and starts the appropriate QEMU user-mode emulator:
+- `qemu-x86_64 -g <port> [-strace] <binary>`
+- `qemu-arm -g <port> [-strace] <binary>`
+- `qemu-aarch64 -g <port> [-strace] <binary>`
+
+GDB attaches immediately via `-target-select remote localhost:<port>`. When native execution is selected by unchecking the QEMU box, a prominent modal warning warns the user of direct host execution risks.
+
+### 3. Breakpoint Normalization Engine
+In GDB/MI, specifying raw memory addresses to `-break-insert` requires a leading asterisk `*` (e.g. `-break-insert *0x40008b`), whereas function symbols must not have one (e.g. `-break-insert main`). `format_breakpoint_target()` normalizes all addresses transparently.
+
+### 4. Background Register Interception & Live Mutation
+- GDB's verbose `info registers` table is intercepted directly in the Python stream reader (`gdb_stream_reader()`) via regex:
+  ```python
+  reg_pattern = re.compile(r'~"([a-zA-Z0-9_]+)\s+(0x[0-9a-fA-F]+|[0-9]+)')
+  ```
+- Register values are stored in `session_info['registers']` and returned as clean JSON dictionaries on every `/api/debug/poll` request, completely suppressing terminal spam.
+- Editing a register value dispatches `-interpreter-exec console "set $<reg> = <val>"`, synchronizing the mutated CPU state immediately.
+
+### 5. Live Program I/O & Syscall Hooks
+- Program output (`printf`, `puts`, `write(1, ...)`) is captured from QEMU's `stdout` pipe and routed to the dedicated **Program I/O (stdout / stderr)** terminal.
+- Kernel syscalls and socket communications (`socket`, `connect`, `sendto`, `recvfrom`) are parsed live from QEMU's `stderr` (`-strace`) stream.
+
+---
+
+## 7. Firmware & Signature Scanner Subsystem (`debug_service.py`, `debug.js`)
+
+HT-RE embeds a signature scanner powered by `binwalk`:
+- **Signature Detection:** Scans the binary for embedded file systems (SquashFS, CramFS, JFFS2), compressed archives (gzip, bzip2, LZMA, Zstandard), and bootloader headers.
+- **Recursive Carving:** Supports recursive extraction (`-e --matryoshka`) into an isolated `<binary>.extracted` directory.
+- **Extraction File Tree:** Executes `tree -a` against carved artifacts and presents a navigable hierarchical directory tree in the web workspace.
+- **Entropy Analysis:** Executes `binwalk -E` to identify encrypted or compressed payload regions.
+
+---
+
+## 8. Ghidra Headless Bridge & AST Stitching (`ghidra_service.py`, `Decompile*.java`)
 
 HT-RE communicates with Ghidra's JVM using `analyzeHeadless` in temporary isolated project directories:
 
@@ -230,7 +323,7 @@ When clicking **Show All in One (C/C++)**:
 
 ---
 
-## 7. Persistent SHA-256 Caching Architecture
+## 9. Persistent SHA-256 Caching Architecture
 
 1. `get_file_hash(path)` reads the ELF binary in 64KB blocks to generate a SHA-256 checksum.
 2. Decompilation results are stored in `.htre_cache/<sha256_hash>.json`.
@@ -239,7 +332,7 @@ When clicking **Show All in One (C/C++)**:
 
 ---
 
-## 8. Virtual DOM Scroller & Viewport Engine (`scroller.js`, `disassembly.js`)
+## 10. Virtual DOM Scroller & Viewport Engine (`scroller.js`, `disassembly.js`)
 
 Rendering 100,000+ lines of assembly in standard browser DOMs causes heavy UI lag. HT-RE uses a high-performance **Virtual Scroller**:
 
@@ -280,7 +373,7 @@ Only ~45 DOM nodes exist at any given moment.
 
 ---
 
-## 9. Floating Multi-Window Desktop Environment & Taskbar Dock (`modal.js`)
+## 11. Floating Multi-Window Desktop Environment & Taskbar Dock (`modal.js`)
 
 HT-RE includes a floating Multi-Window Manager (MWM) for side-by-side analysis.
 
@@ -296,7 +389,7 @@ HT-RE includes a floating Multi-Window Manager (MWM) for side-by-side analysis.
 
 ---
 
-## 10. Ace Editor Integration & Token Context Converters
+## 12. Ace Editor Integration & Token Context Converters
 
 Each floating window embeds an instance of `Ace.js` with the `vibrant_ink` theme.
 
@@ -307,7 +400,7 @@ Each floating window embeds an instance of `Ace.js` with the `vibrant_ink` theme
 
 ---
 
-## 11. Embedded Multi-File C/C++ & Assembly IDE (`patch.js`, `patch_service.py`)
+## 13. Embedded Multi-File C/C++ & Assembly IDE (`patch.js`, `patch_service.py`)
 
 HT-RE embeds a full-featured code editor and compilation pipeline:
 
@@ -333,7 +426,7 @@ HT-RE embeds a full-featured code editor and compilation pipeline:
 
 ---
 
-## 12. CPU Memory Emulation & IEEE 754 Converter Engine (`converter.js`)
+## 14. CPU Memory Emulation & IEEE 754 Converter Engine (`converter.js`)
 
 Simulates physical CPU registers and numerical representations:
 
@@ -356,7 +449,7 @@ Simulates physical CPU registers and numerical representations:
 
 ---
 
-## 13. Infinite Spawnable RE Scientific Calculators (`converter.js`)
+## 15. Infinite Spawnable RE Scientific Calculators (`converter.js`)
 
 Spawn unlimited side-by-side calculators with isolated calculation stacks.
 
@@ -372,7 +465,7 @@ Spawn unlimited side-by-side calculators with isolated calculation stacks.
 
 ---
 
-## 14. Multi-Encoding Strings & Found Strings Engine (`strings.js`, `converter.js`)
+## 16. Multi-Encoding Strings & Found Strings Engine (`strings.js`, `converter.js`)
 
 ### Multi-Encoding String Engine
 - **UTF-8 / ASCII:** Encoded/decoded using `TextEncoder` and `TextDecoder('utf-8')`.
@@ -384,7 +477,7 @@ Cross-references `strings -a -t x` with `objdump -D` disassembly text. RIP-relat
 
 ---
 
-## 15. Dis/Assembler Tool & `binpatch` Integration (`patch.js`, `patch_service.py`)
+## 17. Dis/Assembler Tool & `binpatch` Integration (`patch.js`, `patch_service.py`)
 
 ### Dis/Assembler
 Provides bi-directional translation between assembly mnemonics (`mov r1, #55` or `xor eax, eax`) and raw machine code bytes (`e3 a0 10 37` / `31 c0`) for `x86-64`, `ARM`, and `AArch64`.
@@ -394,11 +487,11 @@ Direct visual wrapper for `binpatch`:
 - **Write Mode:** Overwrites bytes at offsets (`-o`) or virtual addresses (`-va`) with automatic `.bak` backup creation.
 - **Find Mode:** Executes exact (`-f`) or heuristic wildcard (`-fh`) byte pattern scans.
 - **Resolve Mode:** Disassembles logic blocks at offsets or entry points (`-m`, `-e`) with "Stream Until Return" (`-r`) options.
-- **Backup Manager:** Lists and restores binary backups with one click.
+- **Backup Manager:** Lists, restores, and deletes binary backup files (`🗑`).
 
 ---
 
-## 16. Granular JSON Workspace Exporter (`export.js`, `export_service.py`)
+## 18. Granular JSON Workspace Exporter (`export.js`, `export_service.py`)
 
 Exports complete analysis sessions into structured JSON archives.
 
@@ -409,9 +502,9 @@ Exports complete analysis sessions into structured JSON archives.
 
 ---
 
-## 17. Invasive User Action Tracking Subsystem (`state.js`, `server.py`)
+## 19. Invasive User Action Tracking Subsystem (`state.js`, `server.py`)
 
 When `invasive = true`, HT-RE logs reverse engineering workflows:
-- Tracks tab transitions (`TAB_SWITCH`), clicks (`UI_CLICK`), search terms (`SEARCH_EXECUTE`), compiler runs (`COMPILE_CODE_EXEC`), token conversions, and time spent per view.
+- Tracks tab transitions (`TAB_SWITCH`), clicks (`UI_CLICK`), search terms (`SEARCH_EXECUTE`), compiler runs (`COMPILE_CODE_EXEC`), token conversions, debugger operations (`DEBUG_START`, `DEBUG_STOP`, `DEBUG_STEP_IN`, `DEBUG_STEP_OVER`, `DEBUG_CONTINUE`), register mutations (`DEBUG_SET_REGISTER`), breakpoint modifications, and time spent per view.
 - Events are dispatched asynchronously to `POST /api/track` and appended to `tracking.json`.
 - Export logs anytime using the **🕵 Export Tracking** button in the top bar for workflow analytics and model training.

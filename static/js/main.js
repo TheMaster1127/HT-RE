@@ -82,7 +82,6 @@ function updateTabs(activeTab) {
 
     currentTab = activeTab;
 
-    // Save active tab per project continuously
     if (binaryPath && openProjects[binaryPath]) {
         openProjects[binaryPath].activeTab = activeTab;
     }
