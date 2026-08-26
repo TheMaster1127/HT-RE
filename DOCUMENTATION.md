@@ -275,6 +275,24 @@ In GDB/MI, specifying raw memory addresses to `-break-insert` requires a leading
 - Program output (`printf`, `puts`, `write(1, ...)`) is captured from QEMU's `stdout` pipe and routed to the dedicated **Program I/O (stdout / stderr)** terminal.
 - Kernel syscalls and socket communications (`socket`, `connect`, `sendto`, `recvfrom`) are parsed live from QEMU's `stderr` (`-strace`) stream.
 
+#### Security: Native Execution Warning
+
+`debug.js` and `debug_service.py` enforce a critical safety rule: **QEMU user-mode emulation is enabled by default**.
+
+If the user attempts to uncheck the **"Emulate with QEMU"** checkbox, the frontend triggers a critical confirmation dialog:
+
+> ⚠️ DANGER / CRITICAL WARNING:
+>
+> You are unchecking QEMU user-mode emulation.
+> This will execute the target binary directly on your HOST CPU!
+> If the binary contains foreign/malicious instructions or shellcode, it may crash or harm your system.
+>
+> Are you absolutely sure you want to run natively?
+
+This dialog blocks execution until the user explicitly confirms (or aborts), preventing accidental native execution of untrusted binaries.
+
+The `use_qemu` flag is stored in `debugState` and preserved across workspace tabs and project switches.
+
 ---
 
 ## 7. Firmware & Signature Scanner Subsystem (`debug_service.py`, `debug.js`)
