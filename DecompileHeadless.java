@@ -13,13 +13,14 @@ public class DecompileHeadless extends GhidraScript {
 
         String target = args[0];
         Function targetFunc = null;
+        Address directAddr = null;
 
         // 1. Try resolving as Address (with PIE ImageBase auto-offset)
         try {
             long rawOffset = Long.parseUnsignedLong(target.replace("0x", ""), 16);
             
             // A. Try absolute address directly
-            Address directAddr = toAddr(rawOffset);
+            directAddr = toAddr(rawOffset);
             targetFunc = getFunctionAt(directAddr);
 
             // B. If not found, try adding Ghidra's ImageBase (for PIE binaries like 0x1149 -> 0x101149)
@@ -40,6 +41,14 @@ public class DecompileHeadless extends GhidraScript {
                     break;
                 }
             }
+        }
+
+        // 3. For raw/bare-metal sectionless binaries: Auto-create function at Entry Address if missing!
+        if (targetFunc == null && directAddr != null) {
+            try {
+                disassemble(directAddr);
+                targetFunc = createFunction(directAddr, "entry_point");
+            } catch (Exception e) {}
         }
 
         System.out.println("=== GHIDRA_C_START ===");

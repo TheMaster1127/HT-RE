@@ -101,6 +101,10 @@ function jumpTo(addr, historyArg = true) {
     const raw = addr.toString().trim();
     const rawLower = raw.toLowerCase();
     const hexClean = rawLower.replace(/^0x/, '').replace(/^0+/, '') || '0';
+    
+    // Relative offset calculation fallback (e.g. 0x400078 -> 78)
+    const vNum = parseInt(hexClean, 16);
+    const relOffset = !isNaN(vNum) ? (vNum % 0x10000).toString(16).replace(/^0+/, '') || '0' : '';
 
     if (currentTab === 'hexdump') {
         const num = parseInt(hexClean, 16);
@@ -125,7 +129,7 @@ function jumpTo(addr, historyArg = true) {
             });
         }
 
-        // Priority 3: Exact Address Match on Disassembly Line
+        // Priority 3: Exact Address Match on Disassembly Line (with VMA load address)
         if (targetIndex === -1) {
             targetIndex = mainScroller.lines.findIndex(line => {
                 const m = line.match(/^\s*([0-9a-fA-F]+):/);
@@ -142,10 +146,22 @@ function jumpTo(addr, historyArg = true) {
             });
         }
 
-        // Priority 4: Fallback line substring search
+        // Priority 4: Relative offset match (if binary is disassembled without VMA)
+        if (targetIndex === -1 && relOffset) {
+            targetIndex = mainScroller.lines.findIndex(line => {
+                const m = line.match(/^\s*([0-9a-fA-F]+):/);
+                if (m) {
+                    const lineAddr = m[1].toLowerCase().replace(/^0+/, '') || '0';
+                    return lineAddr === relOffset;
+                }
+                return false;
+            });
+        }
+
+        // Priority 5: Fallback line substring search
         if (targetIndex === -1) {
             targetIndex = mainScroller.lines.findIndex(line => {
-                return line.toLowerCase().includes(hexClean + ':');
+                return line.toLowerCase().includes(hexClean + ':') || (relOffset && line.toLowerCase().includes(relOffset + ':'));
             });
         }
 

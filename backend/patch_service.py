@@ -143,8 +143,9 @@ def handle_compile(data):
     lang = data.get('lang', 'c') 
     compiler = data.get('compiler', 'gcc')
     options = data.get('options', '')
+    cmd_pattern = data.get('cmd_pattern', '').strip()
     
-    # Safely construct universal upload directory in OS Temp to bypass permission errors
+    # Universal output upload directory
     UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "htre_uploads")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     
@@ -152,50 +153,62 @@ def handle_compile(data):
     out_name = f"compiled_{timestamp}.bin"
     final_out_path = os.path.join(UPLOAD_DIR, out_name)
 
-    # Use an isolated temp directory to prevent any "Permission Denied" for source.c
     with tempfile.TemporaryDirectory() as tmpdir:
-        src_filename = "source.c" if lang == 'c' else ("source.cpp" if lang == 'cpp' else "source.asm")
+        ext = ".c" if lang == 'c' else (".cpp" if lang == 'cpp' else (".asm" if lang == 'asm' else ".src"))
+        src_filename = f"source{ext}"
         src_file = os.path.join(tmpdir, src_filename)
         tmp_out = os.path.join(tmpdir, "a.out")
         
         with open(src_file, 'w') as f:
             f.write(code)
             
-        if lang in ['c', 'cpp']:
+        if cmd_pattern:
+            cmd = cmd_pattern.replace('{compiler}', compiler) \
+                             .replace('{input}', f'"{src_file}"') \
+                             .replace('{output}', f'"{tmp_out}"') \
+                             .replace('{options}', options) \
+                             .replace('$COMPILER', compiler) \
+                             .replace('$IN', f'"{src_file}"') \
+                             .replace('$OUT', f'"{tmp_out}"') \
+                             .replace('$FLAGS', options)
+        elif lang in ['c', 'cpp']:
             cmd = f"{compiler} {options} \"{src_file}\" -o \"{tmp_out}\""
-        else: # asm
+        elif lang == 'asm':
             if compiler == 'nasm':
                 cmd = f"nasm {options} -f elf64 \"{src_file}\" -o \"{tmpdir}/out.o\" && ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
             elif compiler == 'fasm':
                 cmd = f"fasm \"{src_file}\" \"{tmp_out}\""
-            elif compiler == 'gas' or compiler == 'as':
+            elif compiler in ['gas', 'as']:
                 cmd = f"as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
             elif compiler == 'arm-linux-gnueabihf-as':
                 cmd = f"arm-linux-gnueabihf-as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && arm-linux-gnueabihf-ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
             elif compiler == 'aarch64-linux-gnu-as':
                 cmd = f"aarch64-linux-gnu-as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && aarch64-linux-gnu-ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
             else:
-                # Custom fallback
                 cmd = f"{compiler} {options} \"{src_file}\" -o \"{tmp_out}\""
+        else: # other / custom
+            cmd = f"{compiler} {options} \"{src_file}\""
 
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         
-        # Intelligent Output Detection: If tmp_out doesn't exist, maybe it ignored the -o flag.
+        # Intelligent Output Detection: If tmp_out doesn't exist, search for any newly generated binary
         if not os.path.exists(tmp_out):
-            new_files = [f for f in os.listdir(tmpdir) if f != src_filename and not f.endswith('.o')]
-            if new_files:
-                tmp_out = os.path.join(tmpdir, new_files[0])
+            candidates = [
+                os.path.join(tmpdir, f) for f in os.listdir(tmpdir) 
+                if f != src_filename and not f.endswith('.o') and not f.endswith('.s') and not f.endswith('.src') and not f.endswith('.c') and not f.endswith('.cpp')
+            ]
+            if candidates:
+                tmp_out = candidates[0]
         
-        # Copy to the final directory and ensure executable rights
         if os.path.exists(tmp_out):
             shutil.copy2(tmp_out, final_out_path)
             try:
                 os.chmod(final_out_path, 0o755)
             except:
                 pass
-            return {'path': final_out_path, 'output': f"Compiled successfully: {final_out_path}\n{res.stdout}\n{res.stderr}"}
+            return {'path': final_out_path, 'output': f"Command: {cmd}\n\nCompiled successfully: {final_out_path}\n{res.stdout}\n{res.stderr}".strip()}
         else:
-            return {'error': f"Failed to generate output file.\n{res.stderr}\n{res.stdout}"}
+            return {'error': f"Failed to generate executable.\nCommand executed:\n{cmd}\n\nCompiler Output:\n{res.stderr}\n{res.stdout}".strip()}
 
 def get_patch_history(data):
     path = data.get('binary_path', '')

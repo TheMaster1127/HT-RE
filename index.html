@@ -236,16 +236,17 @@
                     <div class="ide-main">
                         <div class="bp-header" style="padding: 15px 15px 5px 15px; margin:0;">
                             <h2 style="color: #00ffcc; margin: 0;">Code Editor & Compiler</h2>
-                            <span style="color: #888; font-size: 0.9em;">Multi-file IDE with custom compilers and output detection.</span>
+                            <span style="color: #888; font-size: 0.9em;">Multi-file IDE with custom command templates and toolchain execution.</span>
                         </div>
                         
                         <div style="padding: 10px 15px; display: flex; gap: 15px; flex-wrap:wrap; background:#111; border-bottom: 1px solid #222; align-items:flex-end;">
                             <div>
                                 <label style="font-size:0.8em; color:var(--primary); display:block; margin-bottom:2px;">Language</label>
-                                <select id="ide-lang" onchange="updateIdeDefaults()" style="width:120px;">
+                                <select id="ide-lang" onchange="updateIdeDefaults()" style="width:140px;">
                                     <option value="c">C</option>
                                     <option value="cpp">C++</option>
                                     <option value="asm">Assembly</option>
+                                    <option value="other">Other / Custom</option>
                                 </select>
                             </div>
                             <div style="position:relative;">
@@ -309,6 +310,11 @@
                             </div>
                         </div>
 
+                        <!-- SIMPLE OPTIONS FOR OTHER / CUSTOM -->
+                        <div id="ide-simple-options" style="display:none; padding:10px 15px; background:#151515; border-bottom:1px solid #333;">
+                            <input type="text" id="ide-custom-flags-text" placeholder="Compiler / Toolchain Arguments & Flags (e.g. -v --target=flat)" style="width:100%;">
+                        </div>
+
                         <!-- EDITOR -->
                         <div id="ide-editor" style="flex: 1; border-bottom: 1px solid var(--border); font-size: 14px;"></div>
                         
@@ -322,26 +328,36 @@
                 </div>
             </div>
 
-            <!-- Custom Compiler Modal (Fixed sizing for overflow scrolling) -->
-            <div id="customCompilerModal" class="modal" style="display: none; width:500px; height:auto; max-height:90vh; overflow-y:auto; z-index: 9999; top: 5%; left: 30%;">
+            <!-- Custom Compiler Modal -->
+            <div id="customCompilerModal" class="modal" style="display: none; width:540px; height:auto; max-height:90vh; overflow-y:auto; z-index: 9999; top: 5%; left: 30%;">
                 <div class="modal-header">
-                    <span style="flex:1;">Add Custom Compiler</span>
+                    <span style="flex:1;">Add Custom Compiler / Toolchain</span>
                     <span class="win-ctrl-btn win-close-btn" onclick="document.getElementById('customCompilerModal').style.display='none'; document.getElementById('ide-compiler').value='gcc';">✕</span>
                 </div>
                 <div class="modal-body" style="padding: 15px; background: #111;">
                     <div class="bp-group">
                         <label>Unique Identifier Name</label>
-                        <input type="text" id="cc-name" placeholder="e.g. mips-gcc or my-fasm">
+                        <input type="text" id="cc-name" placeholder="e.g. custom-nasm or mips-gcc">
                     </div>
                     <div class="bp-group">
-                        <label>Absolute Path to Executable</label>
-                        <input type="text" id="cc-path" placeholder="e.g. /usr/local/bin/arm-none-eabi-gcc">
+                        <label>Absolute Executable Path or Tool Name</label>
+                        <input type="text" id="cc-path" placeholder="e.g. /usr/bin/fasm or arm-none-eabi-gcc">
+                    </div>
+                    <div class="bp-group">
+                        <label>Command Pattern / Execution Template</label>
+                        <input type="text" id="cc-cmd" placeholder="{compiler} {options} {input} -o {output}">
+                        <div style="font-size:0.75em; color:#888; margin-top:3px;">Placeholders: <code>{compiler}</code>, <code>{options}</code>, <code>{input}</code>, <code>{output}</code></div>
+                        <div style="display:flex; gap:5px; margin-top:5px;">
+                            <button type="button" style="font-size:0.75em; padding:2px 6px; height:auto;" onclick="document.getElementById('cc-cmd').value='{compiler} {options} {input} -o {output}'">Standard (-o)</button>
+                            <button type="button" style="font-size:0.75em; padding:2px 6px; height:auto;" onclick="document.getElementById('cc-cmd').value='{compiler} {options} {input}'">Input Only</button>
+                            <button type="button" style="font-size:0.75em; padding:2px 6px; height:auto;" onclick="document.getElementById('cc-cmd').value='{compiler} {options} {input} {output}'">In Out</button>
+                        </div>
                     </div>
                     <div class="bp-group">
                         <label>Default Boilerplate Code (Optional)</label>
-                        <textarea id="cc-code" style="width: 100%; height: 250px; background: #050505; color: #0f0; border: 1px solid #333; font-family: monospace; padding: 5px;"></textarea>
+                        <textarea id="cc-code" style="width: 100%; height: 180px; background: #050505; color: #0f0; border: 1px solid #333; font-family: monospace; padding: 5px;"></textarea>
                     </div>
-                    <button class="bp-run-btn" onclick="saveCustomCompiler()" style="background: #00ffcc; color:#000; margin-top:20px;">Save Custom Compiler</button>
+                    <button class="bp-run-btn" onclick="saveCustomCompiler()" style="background: #00ffcc; color:#000; margin-top:15px;">Save Custom Compiler</button>
                 </div>
             </div>
 
@@ -462,7 +478,7 @@
     <!-- DYNAMIC MULTI-WINDOW CONTAINER -->
     <div id="windowManagerContainer"></div>
 
-    <!-- EXPORT JSON MODAL (HIDDEN BY DEFAULT) -->
+    <!-- EXPORT JSON MODAL -->
     <div id="exportModal" class="modal" style="display: none; width:850px; height:600px; z-index: 9999;">
         <div class="modal-header" id="exportHeader">
             <span style="flex:1; cursor:move; user-select:none;">Export JSON Settings</span>

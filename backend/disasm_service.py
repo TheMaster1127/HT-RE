@@ -23,6 +23,50 @@ def resolve_strings(disasm_text, binary_path):
         new_lines.append(line)
     return '\n'.join(new_lines)
 
+def get_elf_load_addr(path):
+    """Accurately extracts the virtual memory load address from Program Headers (PT_LOAD)."""
+    out, _, _ = run_cmd(f'readelf -l "{path}"')
+    lines = out.splitlines()
+    for i, line in enumerate(lines):
+        if 'LOAD' in line:
+            parts = line.split()
+            hex_tokens = [p for p in parts if p.startswith('0x')]
+            # In readelf -l, tokens are: [Offset, VirtAddr, PhysAddr, ...]
+            if len(hex_tokens) >= 2:
+                try:
+                    vaddr = int(hex_tokens[1], 16)
+                    if vaddr > 0:
+                        return vaddr
+                except Exception:
+                    pass
+            # If tokens wrap onto the next line
+            if i + 1 < len(lines):
+                next_tokens = [p for p in lines[i+1].split() if p.startswith('0x')]
+                if len(next_tokens) >= 2:
+                    try:
+                        vaddr = int(next_tokens[1], 16)
+                        if vaddr > 0:
+                            return vaddr
+                    except Exception:
+                        pass
+    
+    # Fallback to Entry Point calculation
+    out_h, _, _ = run_cmd(f'readelf -h "{path}"')
+    m = re.search(r'Entry point address:\s+(0x[0-9a-fA-F]+)', out_h)
+    if m:
+        entry = int(m.group(1), 16)
+        if entry >= 0x10000:
+            return entry - (entry % 0x10000)
+    return 0
+
+def get_elf_entry(path):
+    """Extracts Entry Point address from ELF Header."""
+    out_h, _, _ = run_cmd(f'readelf -h "{path}"')
+    m = re.search(r'Entry point address:\s+(0x[0-9a-fA-F]+)', out_h)
+    if m:
+        return m.group(1)
+    return ""
+
 def handle_nm(path):
     out, _, _ = run_cmd(f'nm -n -S --defined-only "{path}"')
     funcs = []
@@ -36,6 +80,13 @@ def handle_nm(path):
                     funcs.append({'addr': addr, 'name': name})
             except Exception:
                 pass
+    
+    # Auto-fallback: If binary has 0 section headers or 0 symbols, synthesize _start from Entry Point!
+    if not funcs:
+        entry = get_elf_entry(path)
+        if entry and entry != '0x0':
+            funcs.append({'addr': entry, 'name': '_start'})
+
     return {'functions': funcs}
 
 def handle_resolve_strings(binary_path, disasm_text):
@@ -59,36 +110,47 @@ def handle_resolve_strings(binary_path, disasm_text):
 def handle_disasm(path, opt):
     arch_val = opt.get('arch', 'x86-64')
     arch_map = {'x86-64': 'i386:x86-64', 'arm': 'arm', 'aarch64': 'aarch64'}
-    cmd = [get_objdump_cmd(arch_val)]
+    m_arch = arch_map.get(arch_val, 'i386:x86-64')
+    syntax = opt.get('syntax', 'intel')
+    syntax_flag = f"-M {syntax}" if arch_val == 'x86-64' else ""
+    raw_flag = '--show-raw-insn' if opt.get('show_raw') else '--no-show-raw-insn'
+    objdump_bin = get_objdump_cmd(arch_val)
 
     if opt.get('raw_binary'):
-        cmd.append(f'-D -b binary -m {arch_map.get(arch_val)}')
-    else:
-        cmd.append('-D' if opt.get('all_sections') else '-d')
-    
-    cmd.append(f"-M {opt.get('syntax', 'intel')}")
-    cmd.append('--show-raw-insn' if opt.get('show_raw') else '--no-show-raw-insn')
-    cmd.append(f'-w "{path}"')
-    
-    out, _, _ = run_cmd(' '.join(cmd))
+        load_addr = get_elf_load_addr(path)
+        adjust_flag = f"--adjust-vma={hex(load_addr)}" if load_addr else ""
+        cmd = f'{objdump_bin} -D -b binary -m {m_arch} {adjust_flag} {syntax_flag} {raw_flag} -w "{path}"'
+        out, _, _ = run_cmd(cmd)
+        return {'output': resolve_strings(out, path)}
+
+    cmd = f'{objdump_bin} {"-D" if opt.get("all_sections") else "-d"} {syntax_flag} {raw_flag} -w "{path}"'
+    out, err, code = run_cmd(cmd)
+
+    # Automatic bare-metal fallback: If ELF has 0 section headers and objdump returns empty
+    has_disasm_lines = any(':\t' in l or re.match(r'^\s*[0-9a-f]+:', l) for l in out.splitlines())
+    if not has_disasm_lines or "no sections" in err.lower() or "can't disassemble" in err.lower():
+        load_addr = get_elf_load_addr(path)
+        adjust_flag = f"--adjust-vma={hex(load_addr)}" if load_addr else ""
+        fallback_cmd = f'{objdump_bin} -D -b binary -m {m_arch} {adjust_flag} {syntax_flag} {raw_flag} -w "{path}"'
+        out, _, _ = run_cmd(fallback_cmd)
+
     return {'output': resolve_strings(out, path)}
 
 def handle_function_code(path, start_addr, opt):
     arch_val = opt.get('arch', 'x86-64')
     arch_map = {'x86-64': 'i386:x86-64', 'arm': 'arm', 'aarch64': 'aarch64'}
-    cmd = [get_objdump_cmd(arch_val)]
+    m_arch = arch_map.get(arch_val, 'i386:x86-64')
+    syntax = opt.get('syntax', 'intel')
+    syntax_flag = f"-M {syntax}" if arch_val == 'x86-64' else ""
+    raw_flag = '--show-raw-insn' if opt.get('show_raw') else '--no-show-raw-insn'
+    objdump_bin = get_objdump_cmd(arch_val)
 
-    if opt.get('raw_binary'):
-        cmd.append(f'-D -b binary -m {arch_map.get(arch_val)}')
-    else:
-        cmd.append('-D' if opt.get('all_sections') else '-d')
-    cmd.append(f"-M {opt.get('syntax', 'intel')}")
-    cmd.append('--show-raw-insn' if opt.get('show_raw') else '--no-show-raw-insn')
-    cmd.append(f'--start-address={start_addr} -w "{path}"')
-    
-    out, _, _ = run_cmd(' '.join(cmd))
-    code, in_func = [], False
     clean = start_addr.lstrip('0x').lstrip('0') or '0'
+
+    cmd = f'{objdump_bin} {"-D" if opt.get("all_sections") else "-d"} {syntax_flag} {raw_flag} --start-address={start_addr} -w "{path}"'
+    out, _, _ = run_cmd(cmd)
+
+    code, in_func = [], False
     for line in out.splitlines():
         if f"{clean} <" in line and ">:" in line:
             in_func = True
@@ -96,4 +158,21 @@ def handle_function_code(path, start_addr, opt):
             if len(code) > 1 and ">:" in line and f"{clean} <" not in line:
                 break
             code.append(line)
-    return {'output': resolve_strings('\n'.join(code), path)}
+
+    # Automatic bare-metal fallback if no section headers exist
+    if not code:
+        load_addr = get_elf_load_addr(path)
+        adjust_flag = f"--adjust-vma={hex(load_addr)}" if load_addr else ""
+        fallback_cmd = f'{objdump_bin} -D -b binary -m {m_arch} {adjust_flag} {syntax_flag} {raw_flag} --start-address={start_addr} -w "{path}"'
+        f_out, _, _ = run_cmd(fallback_cmd)
+        lines = f_out.splitlines()
+        for l in lines:
+            if clean + ':' in l or in_func:
+                in_func = True
+                code.append(l)
+                if 'ret' in l or 'syscall' in l or len(code) > 80:
+                    break
+        if not code and lines:
+            code = lines[:80]
+
+    return {'output': resolve_strings('\n'.join(code) if code else out, path)}

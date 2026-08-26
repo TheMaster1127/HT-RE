@@ -111,6 +111,7 @@ const nasmDefault = `section .data\n    msg db "Hello World!", 10\n    msg_len e
 const fasmDefault = `format ELF64 executable 3\nsegment readable executable\nentry _start\n_start:\n    mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, msg_len\n    syscall\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n\nsegment readable writeable\n    msg db 'Hello World!', 10\n    msg_len = $ - msg`;
 const gasDefault = `.data\nmsg:\n    .ascii "Hello World!\\n"\n    msg_len = . - msg\n\n.text\n.global _start\n_start:\n    mov $1, %rax\n    mov $1, %rdi\n    lea msg, %rsi\n    mov $msg_len, %rdx\n    syscall\n    mov $60, %rax\n    xor %rdi, %rdi\n    syscall`;
 const armGasDefault = `.data\nmsg:\n    .ascii "Hello World!\\n"\n    msg_len = . - msg\n\n.text\n.global _start\n_start:\n    mov r0, #1\n    ldr r1, =msg\n    ldr r2, =msg_len\n    mov r7, #4\n    swi 0\n    mov r0, #0\n    mov r7, #1\n    swi 0`;
+const otherDefault = `// Custom Code / Script / Toolchain Input\n\n`;
 
 // Load files and selection from persistent storage
 let ideFiles = JSON.parse(localStorage.getItem('htre_ide_files') || 'null') || [ { name: "main.c", lang: "c", compiler: "gcc", content: cDefault } ];
@@ -170,12 +171,12 @@ function renderIdeFileManager() {
 }
 
 function createNewIdeFile() {
-    const fName = prompt("Enter file name (e.g. exploit.c, shellcode.asm):", "newfile.c");
+    const fName = prompt("Enter file name (e.g. exploit.c, shellcode.asm, test.src):", "newfile.c");
     if (!fName) return;
     trackAction("IDE_CREATE_FILE", { name: fName });
-    let lang = fName.endsWith('.cpp') ? 'cpp' : (fName.endsWith('.asm') || fName.endsWith('.s') ? 'asm' : 'c');
-    let comp = lang === 'cpp' ? 'g++' : (lang === 'asm' ? 'nasm' : 'gcc');
-    let def = lang === 'cpp' ? cppDefault : (lang === 'asm' ? nasmDefault : cDefault);
+    let lang = fName.endsWith('.cpp') ? 'cpp' : (fName.endsWith('.asm') || fName.endsWith('.s') ? 'asm' : (fName.endsWith('.c') ? 'c' : 'other'));
+    let comp = lang === 'cpp' ? 'g++' : (lang === 'asm' ? 'nasm' : (lang === 'c' ? 'gcc' : 'custom'));
+    let def = lang === 'cpp' ? cppDefault : (lang === 'asm' ? nasmDefault : (lang === 'c' ? cDefault : otherDefault));
     
     ideFiles.push({ name: fName, lang: lang, compiler: comp, content: def });
     activeIdeFile = ideFiles.length - 1;
@@ -193,12 +194,27 @@ function switchIdeFile(idx) {
     populateCompilersDropdown();
     document.getElementById('ide-compiler').value = f.compiler;
     
-    ideEditor.session.setMode(f.lang === 'asm' ? "ace/mode/assembly_x86" : "ace/mode/c_cpp");
+    let aceMode = "ace/mode/c_cpp";
+    if (f.lang === 'asm') aceMode = "ace/mode/assembly_x86";
+    else if (f.lang === 'other') aceMode = "ace/mode/text";
+    
+    ideEditor.session.setMode(aceMode);
     ideEditor.setValue(f.content, -1);
     
     const flagsWrapper = document.getElementById('ide-flags-wrapper');
-    if (flagsWrapper) {
-        flagsWrapper.style.display = (f.lang === 'asm') ? 'none' : 'block';
+    const simpleFlags = document.getElementById('ide-simple-options');
+    
+    if (flagsWrapper && simpleFlags) {
+        if (f.lang === 'c' || f.lang === 'cpp') {
+            flagsWrapper.style.display = 'block';
+            simpleFlags.style.display = 'none';
+        } else if (f.lang === 'other') {
+            flagsWrapper.style.display = 'none';
+            simpleFlags.style.display = 'block';
+        } else { // asm
+            flagsWrapper.style.display = 'none';
+            simpleFlags.style.display = 'none';
+        }
     }
     
     renderIdeFileManager();
@@ -298,6 +314,7 @@ function deleteActiveCustomCompiler() {
 function saveCustomCompiler() {
     const name = document.getElementById('cc-name').value.trim();
     const path = document.getElementById('cc-path').value.trim();
+    const cmdPattern = document.getElementById('cc-cmd').value.trim();
     const code = document.getElementById('cc-code').value;
     
     if (!name || !path) return alert("Name and Path are required.");
@@ -305,7 +322,7 @@ function saveCustomCompiler() {
         return alert("A custom compiler with that name already exists.");
     }
     
-    const cc = { name, path, code };
+    const cc = { name, path, cmdPattern: cmdPattern || '{compiler} {options} {input} -o {output}', code };
     customCompilers.push(cc);
     localStorage.setItem('htre_custom_compilers', JSON.stringify(customCompilers));
     
@@ -315,7 +332,7 @@ function saveCustomCompiler() {
     document.getElementById('ide-compiler').value = name;
     updateIdeDefaults();
     checkCustomDeleteButton();
-    trackAction("ADD_CUSTOM_COMPILER", { name, path });
+    trackAction("ADD_CUSTOM_COMPILER", { name, path, cmdPattern });
 }
 
 function updateIdeDefaults() {
@@ -325,12 +342,24 @@ function updateIdeDefaults() {
     let mode = "ace/mode/c_cpp";
     
     const flagsWrapper = document.getElementById('ide-flags-wrapper');
-    if (flagsWrapper) {
-        flagsWrapper.style.display = (lang === 'asm') ? 'none' : 'block';
+    const simpleFlags = document.getElementById('ide-simple-options');
+
+    if (flagsWrapper && simpleFlags) {
+        if (lang === 'c' || lang === 'cpp') {
+            flagsWrapper.style.display = 'block';
+            simpleFlags.style.display = 'none';
+        } else if (lang === 'other') {
+            flagsWrapper.style.display = 'none';
+            simpleFlags.style.display = 'block';
+        } else { // asm
+            flagsWrapper.style.display = 'none';
+            simpleFlags.style.display = 'none';
+        }
     }
 
     if (lang === 'c') { def = cDefault; }
     else if (lang === 'cpp') { def = cppDefault; }
+    else if (lang === 'other') { def = otherDefault; mode = "ace/mode/text"; }
     else if (lang === 'asm') {
         mode = "ace/mode/assembly_x86";
         if (compName === 'fasm') def = fasmDefault;
@@ -348,7 +377,7 @@ function updateIdeDefaults() {
         ideFiles[activeIdeFile].lang = lang;
         ideFiles[activeIdeFile].compiler = compName;
         
-        const knownDefaults = [cDefault, cppDefault, nasmDefault, fasmDefault, gasDefault, armGasDefault];
+        const knownDefaults = [cDefault, cppDefault, nasmDefault, fasmDefault, gasDefault, armGasDefault, otherDefault];
         customCompilers.forEach(c => knownDefaults.push(c.code));
         
         if (knownDefaults.includes(ideFiles[activeIdeFile].content) || ideFiles[activeIdeFile].content.trim() === '') {
@@ -366,6 +395,10 @@ function toggleMoreFlags() {
 }
 
 function getCompiledFlags() {
+    const lang = document.getElementById('ide-lang').value;
+    if (lang === 'other') {
+        return document.getElementById('ide-custom-flags-text').value.trim();
+    }
     const cbs = document.querySelectorAll('.ide-flag-cb:checked');
     let flags = Array.from(cbs).map(cb => cb.value).join(' ');
     const extra = document.getElementById('ide-options-text').value.trim();
@@ -380,8 +413,12 @@ async function compileCodeOnly() {
     let compName = document.getElementById('ide-compiler').value;
     
     let execPath = compName;
+    let cmdPattern = '';
     const custom = customCompilers.find(c => c.name === compName);
-    if (custom) execPath = custom.path;
+    if (custom) {
+        execPath = custom.path;
+        cmdPattern = custom.cmdPattern || '';
+    }
     
     const options = (lang === 'asm') ? '' : getCompiledFlags(); 
 
@@ -389,7 +426,9 @@ async function compileCodeOnly() {
     trackAction("COMPILE_CODE_EXEC", { lang, compiler: compName, options });
 
     const res = await fetch(`${API}/compile`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, lang, compiler: execPath, options })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ code, lang, compiler: execPath, options, cmd_pattern: cmdPattern })
     });
     const data = await res.json();
     
