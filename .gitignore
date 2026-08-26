@@ -1,17 +1,15 @@
-# -----------------------------
-# HT-RE Specific Files
-# -----------------------------
-# Local user history
 history.json
 
-# Background SHA-256 Ghidra decompilation cache
 .htre_cache/
 .htre_uploads
 
-# -----------------------------
-# Python Artifacts
-# -----------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+*.compiled
+*.bin
+*.out
+*.o
+tracking.json

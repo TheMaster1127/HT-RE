@@ -1,21 +1,49 @@
 class VirtualScroller {
-    constructor(containerId, text, mode) {
+    constructor(containerId, text, mode, initialScroll = 0, ownerBinary = '') {
         this.container = document.getElementById(containerId);
-        this.lines = text.split('\n');
+        this.lines = text ? text.split('\n') : [];
         this.mode = mode; 
+        this.ownerBinary = ownerBinary || binaryPath; // Permanently lock scroller to its specific binary!
         this.lineHeight = 20; 
         this.highlightIndex = -1;
+        this.isReady = false;
 
+        // Build DOM structure
         this.container.innerHTML = `<div style="height: ${this.lines.length * this.lineHeight}px; width: 1px;"></div><div class="vs-viewport" style="position: absolute; top: 0; left: 0; right: 0; padding-left: 10px;"></div>`;
         this.viewport = this.container.querySelector('.vs-viewport');
-        this.container.onscroll = () => this.render();
+
+        // Set initial scroll position BEFORE attaching listener
+        this.container.scrollTop = initialScroll || 0;
         this.render();
+
+        // Gated onscroll listener locked to ownerBinary
+        this.container.onscroll = () => {
+            this.render();
+            if (this.isReady && typeof onScrollerScroll === 'function') {
+                onScrollerScroll(this.container.scrollTop, this.ownerBinary, this.mode);
+            }
+        };
+
+        // Complete initialization after DOM paint
+        requestAnimationFrame(() => {
+            if (this.container) {
+                this.container.scrollTop = initialScroll || 0;
+                this.render();
+            }
+            this.isReady = true;
+        });
+    }
+
+    restoreScroll(pos) {
+        if (this.container) {
+            this.container.scrollTop = pos || 0;
+            this.render();
+        }
     }
 
     getCurrentAddress() {
         const scrollTop = this.container.scrollTop;
         const startIndex = Math.max(0, Math.floor(scrollTop / this.lineHeight));
-        // Find the exact center of the screen for accurate fallback history
         const centerIndex = startIndex + Math.floor(this.container.clientHeight / this.lineHeight / 2);
         const clampedIndex = Math.min(this.lines.length - 1, Math.max(0, centerIndex));
         
@@ -45,7 +73,6 @@ class VirtualScroller {
             safeLine = safeLine.replace(reMnemonic, '<span class="syntax-mnemonic">$1</span>');
             safeLine = safeLine.replace(reReg, '<span class="syntax-reg">$1</span>');
             
-            // Pass the exact sourceAddr (line address) being clicked into the jump function
             safeLine = safeLine.replace(/\b(0x[0-9a-fA-F]+)\b/g, (m) => {
                 return `<span class="clickable" data-value="${m}" onclick="jumpTo('${m}', ${sourceAddr ? `'${sourceAddr}'` : 'true'})">${m}</span>`;
             });
@@ -70,7 +97,6 @@ class VirtualScroller {
         else if (this.mode === 'header') {
             safeLine = safeLine.replace(/^([a-zA-Z\s.-]+):/g, '<span style="color:var(--primary); font-weight:bold;">$1:</span>');
             
-            // Strictly target the Entry point address to prevent useless LDD hex addresses from being clicked
             if (safeLine.includes("Entry point address:")) {
                 safeLine = safeLine.replace(/\b(0x[0-9a-fA-F]+)\b/g, '<span class="clickable" data-value="$1" onclick="updateTabs(\'disasm\'); loadDisasm().then(()=>jumpTo(\'$1\', false))">$1</span>');
             } else {

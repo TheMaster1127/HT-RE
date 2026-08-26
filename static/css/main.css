@@ -72,6 +72,9 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .tab-btn.asm-btn { color: #55aaff; border-color: #55aaff; }
 .tab-btn.asm-btn.active { color: #000; background: #55aaff; border-color: #55aaff; }
 
+.tab-btn.ide-btn { color: #00ffcc; border-color: #00ffcc; }
+.tab-btn.ide-btn.active { color: #000; background: #00ffcc; border-color: #00ffcc; }
+
 .tab-btn.conv-btn { color: #ffeb73; border-color: #ffeb73; }
 .tab-btn.conv-btn.active { color: #000; background: #ffeb73; border-color: #ffeb73; }
 
@@ -103,7 +106,6 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .clear-data-btn { background: #ff3333; color: #fff; border: 1px solid #ff3333; font-size: 0.85em; padding: 4px 8px; cursor: pointer; height: auto; }
 .clear-data-btn:hover { background: #ff6666; color: #000; border-color: #ff6666; }
 
-/* Scientific Calculator Styles (Restored High Specificity) */
 .calc-instance { background: #050505; padding: 15px; border: 1px solid #333; border-radius: 5px; min-width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
 .calc-history { background: #000; color: #aaa; border: 1px solid #222; height: 60px; overflow-y: auto; margin-bottom: 8px; font-size: 0.8em; padding: 5px; }
 .calc-hist-item { cursor: pointer; padding: 2px; user-select: text; }
@@ -133,7 +135,6 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .calc-btn-eq { background: #ffeb73; color: #000; font-weight: bold; border-color: #ffeb73; }
 .calc-btn-eq:hover { background: #fff59d; border-color: #fff59d; }
 
-/* ASCII Table Styles */
 .ascii-row { display: grid; grid-template-columns: 35px 35px 35px 45px minmax(0, 1fr); gap: 5px; padding: 3px 5px; border-bottom: 1px solid #222; }
 .ascii-row:hover { background: #222; }
 .ascii-header { font-weight: bold; color: #ff3333; border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 5px; background: #111; }

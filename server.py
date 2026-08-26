@@ -8,7 +8,7 @@ from backend.disasm_service import handle_nm, handle_resolve_strings, handle_dis
 from backend.ghidra_service import handle_decompile_single, handle_decompile_batch
 from backend.generic_service import handle_generic_cmd
 from backend.export_service import handle_export
-from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw
+from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw, handle_compile, get_patch_history, restore_patch, track_action
 
 app = Flask(__name__, static_url_path='', static_folder=STATIC_FOLDER)
 
@@ -95,6 +95,22 @@ def api_assemble():
 @app.route('/api/disassemble_raw', methods=['POST'])
 def api_disassemble_raw():
     return jsonify(handle_disassemble_raw(request.json))
+
+@app.route('/api/compile', methods=['POST'])
+def api_compile():
+    return jsonify(handle_compile(request.json))
+
+@app.route('/api/patch_history', methods=['POST'])
+def api_patch_history():
+    return jsonify(get_patch_history(request.json))
+
+@app.route('/api/restore_patch', methods=['POST'])
+def api_restore_patch():
+    return jsonify(restore_patch(request.json))
+
+@app.route('/api/track', methods=['POST'])
+def api_track():
+    return jsonify(track_action(request.json))
 
 if __name__ == '__main__':
     print(f"🚀 Server running on http://localhost:{DEFAULT_PORT}")

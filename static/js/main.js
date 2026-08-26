@@ -1,10 +1,41 @@
-function saveCurrentTabScroll() {
-    if (!currentTab) return;
-    if (mainScroller && mainScroller.container) {
-        tabScrollPositions[currentTab] = mainScroller.container.scrollTop;
-    } else {
-        const out = document.getElementById('output');
-        if (out) tabScrollPositions[currentTab] = out.scrollTop;
+// Auto-load last binary on page refresh
+document.addEventListener('DOMContentLoaded', () => {
+    const lastBinary = localStorage.getItem('htre_last_binary');
+    if (lastBinary) {
+        document.getElementById('binaryPath').value = lastBinary;
+        setTimeout(() => { if (typeof loadBinary === 'function') loadBinary(); }, 500);
+    }
+});
+
+// REAL-TIME SCROLLER HOOK - STRICTLY LOCKED TO OWNER BINARY
+function onScrollerScroll(scrollTop, ownerBinary, mode) {
+    const targetBin = ownerBinary || binaryPath;
+    const targetTab = mode === 'disasm' ? 'disasm' : (mode === 'hex' ? 'hexdump' : (mode === 'header' ? 'header' : (mode === 'sections' ? 'sections' : currentTab)));
+    
+    if (targetBin && targetTab) {
+        const key = targetBin + '|||' + targetTab;
+        tabScrollPositions[key] = scrollTop;
+        if (openProjects[targetBin]) {
+            if (!openProjects[targetBin].scrolls) openProjects[targetBin].scrolls = {};
+            openProjects[targetBin].scrolls[targetTab] = scrollTop;
+        }
+    }
+}
+
+function saveCurrentTabScroll(optBinary, optTab) {
+    const targetBin = optBinary || (mainScroller && mainScroller.ownerBinary) || binaryPath;
+    const targetTab = optTab || currentTab;
+    if (!targetTab || !targetBin) return;
+    
+    const cacheKey = targetBin + '|||' + targetTab;
+    
+    if (mainScroller && mainScroller.container && mainScroller.isReady && (mainScroller.ownerBinary === targetBin)) {
+        const pos = mainScroller.container.scrollTop;
+        tabScrollPositions[cacheKey] = pos;
+        if (openProjects[targetBin]) {
+            if (!openProjects[targetBin].scrolls) openProjects[targetBin].scrolls = {};
+            openProjects[targetBin].scrolls[targetTab] = pos;
+        }
     }
 }
 
@@ -16,13 +47,16 @@ async function runCmd(cmd, tabName, forceReload = false) {
     else if (cmd === 'readelf-h') mode = 'header';
     else if (cmd === 'readelf-S') mode = 'sections';
 
-    if (!forceReload && tabDataCache[tabName]) {
-        mainScroller = new VirtualScroller('output', tabDataCache[tabName].output, mode);
-        const savedScroll = tabScrollPositions[tabName] || 0;
-        if (mainScroller.container) {
-            mainScroller.container.scrollTop = savedScroll;
-            mainScroller.render();
-        }
+    const cacheKey = binaryPath + '|||' + tabName;
+
+    let savedScroll = 0;
+    if (tabScrollPositions[cacheKey] !== undefined) savedScroll = tabScrollPositions[cacheKey];
+    else if (openProjects[binaryPath] && openProjects[binaryPath].scrolls && openProjects[binaryPath].scrolls[tabName] !== undefined) {
+        savedScroll = openProjects[binaryPath].scrolls[tabName];
+    }
+
+    if (!forceReload && tabDataCache[cacheKey]) {
+        mainScroller = new VirtualScroller('output', tabDataCache[cacheKey].output, mode, savedScroll, binaryPath);
         return;
     }
 
@@ -31,35 +65,39 @@ async function runCmd(cmd, tabName, forceReload = false) {
     const data = await res.json();
     
     const outputText = data.output || '';
-    tabDataCache[tabName] = { output: outputText, mode: mode };
+    tabDataCache[cacheKey] = { output: outputText, mode: mode };
 
-    mainScroller = new VirtualScroller('output', outputText, mode);
-    const savedScroll = tabScrollPositions[tabName] || 0;
-    if (savedScroll && mainScroller.container) {
-        mainScroller.container.scrollTop = savedScroll;
-        mainScroller.render();
-    }
+    mainScroller = new VirtualScroller('output', outputText, mode, savedScroll, binaryPath);
 }
 
 function updateTabs(activeTab) {
     if (currentTab !== activeTab) {
+        if (typeof tabStartTime !== 'undefined') {
+            const timeSpent = Date.now() - tabStartTime;
+            if (typeof trackAction === 'function') trackAction("TAB_SWITCH", { from: currentTab, to: activeTab, time_spent_ms: timeSpent });
+            tabStartTime = Date.now();
+        }
         saveCurrentTabScroll();
     }
     
     currentTab = activeTab;
     
-    // Clear navigation history when leaving disassembly tab
-    if (activeTab !== 'disasm') {
-        navHistory = [];
-        const btnBack = document.getElementById('btnBack');
-        if (btnBack) btnBack.disabled = true;
+    // Save active tab per project continuously
+    if (binaryPath && openProjects[binaryPath]) {
+        openProjects[binaryPath].activeTab = activeTab;
+    }
+    
+    const btnBack = document.getElementById('btnBack');
+    if (btnBack) {
+        btnBack.disabled = (navHistory.length === 0);
     }
 
-    document.getElementById('output').style.display = (activeTab === 'patch' || activeTab === 'asm' || activeTab === 'conv' || activeTab === 'ascii') ? 'none' : 'block';
+    document.getElementById('output').style.display = (activeTab === 'patch' || activeTab === 'asm' || activeTab === 'conv' || activeTab === 'ascii' || activeTab === 'ide') ? 'none' : 'block';
     document.getElementById('patchPanel').style.display = activeTab === 'patch' ? 'flex' : 'none';
     document.getElementById('asmPanel').style.display = activeTab === 'asm' ? 'flex' : 'none';
     document.getElementById('convPanel').style.display = activeTab === 'conv' ? 'flex' : 'none';
     document.getElementById('asciiPanel').style.display = activeTab === 'ascii' ? 'flex' : 'none';
+    document.getElementById('idePanel').style.display = activeTab === 'ide' ? 'flex' : 'none';
     document.getElementById('findAllPanel').style.display = 'none';
     
     document.getElementById('bar-jump').style.display = (activeTab === 'disasm' || activeTab === 'hexdump') ? 'flex' : 'none';
@@ -69,14 +107,43 @@ function updateTabs(activeTab) {
         document.getElementById('jumpInput').placeholder = activeTab === 'hexdump' ? "e.g. 0x112b" : "e.g. 0x4011cd";
     }
 
+    if (activeTab === 'ide' && typeof initIdeEditor === 'function') {
+        initIdeEditor();
+    }
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7, 'asm': 8, 'conv': 9, 'ascii': 10 };
+    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7, 'asm': 8, 'ide': 9, 'conv': 10, 'ascii': 11 };
     if (activeTab in btnMap) document.querySelectorAll('.tab-btn')[btnMap[activeTab]].classList.add('active');
+}
+
+function showIdeUI() { updateTabs('ide'); }
+
+function resetWorkspace() {
+    if (!confirm("Are you sure you want to reset everything? This will clear all workspaces and safely default to nothingness.")) return;
+    
+    if (typeof closeAllProjectWindows === 'function') closeAllProjectWindows();
+    openProjects = {};
+    binaryPath = '';
+    navHistory = [];
+    localStorage.removeItem('htre_last_binary');
+    document.getElementById('binaryPath').value = '';
+    document.getElementById('statusLabel').innerHTML = 'No file loaded';
+    document.getElementById('funcList').innerHTML = '';
+    document.getElementById('output').innerHTML = '';
+    mainScroller = null;
+    tabDataCache = {};
+    tabScrollPositions = {};
+    if (typeof resetConverterToDefault === 'function') resetConverterToDefault();
+    if (typeof renderProjectTabs === 'function') renderProjectTabs();
+    updateTabs('disasm');
+    
+    if (typeof trackAction === 'function') trackAction("RESET_WORKSPACE");
 }
 
 function executeSearch() {
     const val = document.getElementById('searchInput').value;
     if (val) {
+        if (typeof trackAction === 'function') trackAction("SEARCH_EXECUTE", { term: val, tab: currentTab });
         if (currentTab === 'foundStrings') filterFoundStrings(val);
         else if (mainScroller) mainScroller.searchNext(val);
     }
@@ -85,6 +152,7 @@ function executeSearch() {
 function executeFindAll() {
     const val = document.getElementById('searchInput').value;
     if (!val || !mainScroller) return;
+    if (typeof trackAction === 'function') trackAction("SEARCH_FIND_ALL", { term: val, tab: currentTab });
     const results = mainScroller.searchEngine(val, true);
     const panel = document.getElementById('findAllPanel');
     const list = document.getElementById('findAllList');
@@ -104,7 +172,6 @@ function executeFindAll() {
     panel.style.display = 'flex';
 }
 
-// Resizer logic (Left / Right)
 const resizer = document.getElementById('resizer');
 const sidebar = document.getElementById('sidebar');
 let isResizing = false;
@@ -128,10 +195,21 @@ if (resizerRight) {
     document.addEventListener('mouseup', () => { isResizingRight = false; if (resizerRight) resizerRight.classList.remove('active'); });
 }
 
-// History Dropdown Logic
-function toggleHistory() {
+async function toggleHistory() {
     const menu = document.getElementById('historyMenu');
-    menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${API}/history`);
+        const data = await res.json();
+        renderHistoryUI(data.history);
+        menu.style.display = 'block';
+    } catch (err) {
+        console.error("Failed to fetch history from server:", err);
+    }
 }
 
 function loadHistoryItem(path) {
@@ -167,13 +245,14 @@ function renderHistoryUI(historyArray) {
         menu.appendChild(item);
     });
 }
+
 document.addEventListener('click', (e) => {
     if (!e.target.closest('#historyDropdown')) {
-        document.getElementById('historyMenu').style.display = 'none';
+        const historyMenu = document.getElementById('historyMenu');
+        if(historyMenu) historyMenu.style.display = 'none';
     }
 });
 
-// Right-click context conversion
 const contextMenu = document.getElementById('contextMenu');
 document.addEventListener('contextmenu', e => {
     if (e.target.classList.contains('clickable')) {
@@ -203,7 +282,7 @@ document.addEventListener('contextmenu', e => {
         contextMenu.style.left = `${e.pageX}px`;
         contextMenu.style.display = 'block';
     } else {
-        contextMenu.style.display = 'none';
+        if(contextMenu) contextMenu.style.display = 'none';
     }
 });
 
@@ -211,6 +290,7 @@ function convert(to) {
     if (!currentElement) return;
     const hexValue = currentElement.dataset.value;
     const numValue = parseInt(hexValue, 16);
+    if (typeof trackAction === 'function') trackAction("CONTEXT_CONVERT", { value: hexValue, to: to });
     if (to === 'hex') { currentElement.innerText = hexValue; }
     if (to === 'dec') { currentElement.innerText = numValue; }
     if (to === 'asc') {
@@ -227,9 +307,8 @@ function convert(to) {
     }
     contextMenu.style.display = 'none';
 }
-document.addEventListener('click', (e) => { if (!e.target.closest('#contextMenu')) contextMenu.style.display = 'none'; });
+document.addEventListener('click', (e) => { if (!e.target.closest('#contextMenu') && contextMenu) contextMenu.style.display = 'none'; });
 
-// Ace Context Menu replacement
 document.addEventListener('contextmenu', function(e) {
     const editorEl = e.target.closest('.modal-editor');
     if (!editorEl) return;
@@ -281,31 +360,47 @@ function replaceAceToken(winId, newVal) {
     const win = openWindows[winId];
     if (win && win.aceEditor && activeAceTokenRange) {
         win.aceEditor.session.replace(activeAceTokenRange, newVal);
+        if (typeof trackAction === 'function') trackAction("EDITOR_REPLACE_TOKEN", { new_val: newVal, win: winId });
         activeAceTokenRange = null;
     }
-    document.getElementById('contextMenu').style.display = 'none';
+    const menu = document.getElementById('contextMenu');
+    if(menu) menu.style.display = 'none';
 }
 
-// Draggable Export Modal setup
 const exportModal = document.getElementById('exportModal');
 const exportHeader = document.getElementById('exportHeader');
 let expIsDown = false, expOffset = [0, 0];
 
-exportHeader.addEventListener('mousedown', (e) => { 
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.win-ctrl-btn')) return;
-    expIsDown = true; 
-    topZIndex += 2;
-    exportModal.style.zIndex = topZIndex;
-    expOffset = [ exportModal.offsetLeft - e.clientX, exportModal.offsetTop - e.clientY ]; 
-});
+if(exportHeader) {
+    exportHeader.addEventListener('mousedown', (e) => { 
+        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.win-ctrl-btn')) return;
+        expIsDown = true; 
+        topZIndex += 2;
+        exportModal.style.zIndex = topZIndex;
+        expOffset = [ exportModal.offsetLeft - e.clientX, exportModal.offsetTop - e.clientY ]; 
+    });
+}
 
 document.addEventListener('mouseup', () => expIsDown = false);
 document.addEventListener('mousemove', (e) => { 
-    if (expIsDown) { 
+    if (expIsDown && exportModal) { 
         e.preventDefault(); 
         const newLeft = Math.max(-exportModal.offsetWidth + 100, Math.min(window.innerWidth - 50, e.clientX + expOffset[0]));
         const newTop = Math.max(0, Math.min(window.innerHeight - 50, e.clientY + expOffset[1]));
         exportModal.style.left = newLeft + 'px'; 
         exportModal.style.top  = newTop + 'px'; 
+    }
+});
+
+document.addEventListener('click', (e) => {
+    if (typeof invasive !== 'undefined' && invasive) {
+        let targetStr = e.target.tagName;
+        if (e.target.id) targetStr += `#${e.target.id}`;
+        if (e.target.className && typeof e.target.className === 'string') {
+            targetStr += `.${e.target.className.replace(/\s+/g, '.')}`;
+        }
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('.clickable') || e.target.closest('.modal-tab') || e.target.closest('.ide-file-item')) {
+            if (typeof trackAction === 'function') trackAction("UI_CLICK", { target: targetStr, text: e.target.innerText ? e.target.innerText.substring(0, 50) : '' });
+        }
     }
 });

@@ -1,15 +1,31 @@
-async function startBatchDecomp() {
-    if (!binaryPath) return alert("Load a binary first!");
+async function decompileFunction(addr, name) {
+    if(!binaryPath) return alert("Please load a binary first.");
     
-    const btn = document.getElementById('btnDecompAll');
-    if (btn.innerText.includes("Decompiled Already")) {
-        if (!confirm("Are you sure you want to decompile? It's already decompiled and saved in cache.")) {
+    openFuncWindow({ name: name, addr: addr, binary: binaryPath }, false);
+    const winId = activeWindowId || Object.keys(openWindows)[0];
+    switchWindowView(winId, 'decomp');
+}
+
+async function startBatchDecomp() {
+    if(!binaryPath) return alert("Please load a binary first.");
+    if(globalFunctions.length === 0) return alert("No functions available to decompile.");
+    
+    let decompCount = 0;
+    Object.keys(originalDecompCache).forEach(k => {
+        if (k.startsWith(binaryPath + '|||') && !k.endsWith('|||COMBINED')) decompCount++;
+    });
+    
+    if (decompCount > 0 && decompCount >= (globalFunctions.length * 0.1)) {
+        if (!confirm(`You already have ${decompCount} functions decompiled in cache.\nAre you sure you want to re-run the Ghidra batch decompiler?`)) {
             return;
         }
     }
     
+    const btn = document.getElementById('btnDecompAll');
     btn.innerText = "Decompiling...";
     btn.disabled = true;
+    
+    if (typeof trackAction === 'function') trackAction("BATCH_DECOMPILE_START");
 
     try {
         const res = await fetch(`${API}/decompile_all`, {
@@ -17,89 +33,57 @@ async function startBatchDecomp() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ binary_path: binaryPath, file_hash: currentFileHash })
         });
+        
         const data = await res.json();
-        if (data.functions) {
-            for (const [cleanAddr, cCode] of Object.entries(data.functions)) {
-                originalDecompCache[cleanAddr] = cCode;
+        
+        if (data.error) {
+            alert("Batch Decompilation failed: " + data.error);
+        } else if (data.functions) { 
+            for (const [addr, code] of Object.entries(data.functions)) { 
+                const cleanId = getCleanId(addr);
+                const cacheKey = binaryPath + '|||' + cleanId;
                 
-                // Exclude the meta-flag from being searched in the UI list
-                if (cleanAddr !== 'BATCH_COMPLETE') {
-                    const el = document.getElementById(`func-item-${cleanAddr}`);
-                    if (el) el.classList.add('cached');
+                originalDecompCache[cacheKey] = code;
+                
+                const el = document.getElementById(`func-item-${cleanId}`);
+                if (el) {
+                    el.classList.add('cached');
+                    const badge = el.querySelector('.c-badge');
+                    if (badge) badge.style.display = 'inline-block';
                 }
             }
-            btn.innerText = "✓ Decompiled Already";
-        } else {
-            alert("Batch decompilation failed. Check server terminal logs.");
-            btn.innerText = "⚡ Decompile All";
         }
     } catch(e) {
-        alert("Error during batch decompilation: " + e.message);
+        console.error("Batch decompile error", e);
+        alert("Network error during batch decompile.");
+    } finally {
         btn.innerText = "⚡ Decompile All";
-    }
-    btn.disabled = false;
-}
-
-function restoreOriginalDecomp() {
-    if (!currentModalFunc) return;
-    const cleanAddr = currentModalFunc.addr.replace(/^0x0*/, '') || '0';
-    if (originalDecompCache[cleanAddr]) {
-        delete userEditedDecompCache[cleanAddr];
-        if (aceSessions[cleanAddr]) {
-            aceSessions[cleanAddr].setValue(originalDecompCache[cleanAddr]);
-        }
+        btn.disabled = false;
     }
 }
 
 function showAllDecompiled() {
-    // Strictly refuse unless the batch flag is present
-    if (!originalDecompCache['BATCH_COMPLETE']) {
-        return alert("Must refuse! You haven't fully decompiled the binary.\n\nPlease click '⚡ Decompile All' to batch process all functions before using the combined view.");
+    if (globalFunctions.length === 0) return alert("No functions available.");
+    openFuncWindow({ name: 'Combined View', addr: 'COMBINED', binary: binaryPath }, true);
+    
+    const winId = activeWindowId || Object.keys(openWindows)[0];
+    switchWindowView(winId, 'decomp');
+    if (typeof trackAction === 'function') trackAction("SHOW_ALL_DECOMPILED");
+}
+
+function renderDecompiled(data, targetDiv) {
+    if (data.error) {
+        document.getElementById(targetDiv).innerHTML = `<div style="color:#ff3333; padding:10px;">${data.error}</div>`;
+        return;
     }
+    const safeOutput = escapeHTML(data.output);
+    const hlOutput = safeOutput
+        .replace(/#include\s+&lt;.*?&gt;/g, '<span style="color:#ff9999;">$&</span>')
+        .replace(/\b(int|void|char|long|short|unsigned|float|double|struct|typedef|return|if|else|while|for|do|switch|case|break|continue)\b/g, '<span style="color:#ff6600; font-weight:bold;">$1</span>')
+        .replace(/\b(0x[0-9a-fA-F]+)\b/g, '<span style="color:#0f0;">$1</span>')
+        .replace(/\b([0-9]+)\b/g, '<span style="color:#0f0;">$1</span>')
+        .replace(/&quot;.*?&quot;/g, '<span style="color:#00ffcc;">$&</span>')
+        .replace(/\/\/.*?(\n|$)/g, '<span style="color:#00ff00; font-style:italic; opacity:0.8;">$&</span>');
 
-    let allCode = [];
-    let entryMain = null;
-    let entryStart = null;
-
-    for (const [addr, code] of Object.entries(originalDecompCache)) {
-        if (addr === 'BATCH_COMPLETE') continue; // Skip the metadata flag
-
-        const func = globalFunctions.find(f => f.addr.replace(/^0x0*/, '') === addr || f.addr === addr);
-        if (!func) continue;
-
-        if (func.name === 'main') {
-            entryMain = `// --- main (${addr}) ---\n${code}\n`;
-            continue;
-        }
-        if (func.name === '_start') {
-            entryStart = `// --- _start (${addr}) ---\n${code}\n`;
-            continue;
-        }
-        if (func.name.startsWith('_')) continue;
-
-        allCode.push(`// --- ${func.name} (${addr}) ---\n${code}\n`);
-    }
-
-    if (entryMain) {
-        allCode.push(entryMain);
-    } else if (entryStart) {
-        allCode.push(entryStart);
-    }
-
-    const combinedCode = allCode.join('\n');
-    const fakeFunc = { name: 'ALL IN ONE', addr: 'COMBINED', isCombined: true };
-
-    openFuncWindow(fakeFunc);
-    setTimeout(() => {
-        switchModalView('decomp');
-        const cleanAddr = 'COMBINED';
-        originalDecompCache[cleanAddr] = combinedCode;
-        if (aceSessions[cleanAddr]) aceSessions[cleanAddr].setValue(combinedCode);
-        else {
-            aceSessions[cleanAddr] = new ace.EditSession(combinedCode, "ace/mode/c_cpp");
-            aceSessions[cleanAddr].setUndoManager(new ace.UndoManager());
-            aceEditor.setSession(aceSessions[cleanAddr]);
-        }
-        userEditedDecompCache[cleanAddr] = combinedCode; 
-    }, 50);
+    document.getElementById(targetDiv).innerHTML = hlOutput;
 }

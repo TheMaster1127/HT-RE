@@ -6,7 +6,7 @@ function bringWindowToFront(winId) {
     topZIndex += 2;
     win.el.style.zIndex = topZIndex;
     activeWindowId = winId;
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
 function createNewWindow(initialFunc = null, customGeom = null) {
@@ -84,7 +84,7 @@ function createNewWindow(initialFunc = null, customGeom = null) {
         addTabToWindow(winId, initialFunc);
     }
 
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
     return winObj;
 }
 
@@ -112,7 +112,6 @@ function attachWindowDragListeners(winId) {
         }
     });
 
-    // Right-click header menu
     header.addEventListener('contextmenu', (e) => {
         if (e.target.closest('button') || e.target.closest('input')) return;
         e.preventDefault();
@@ -139,9 +138,8 @@ function hideWindowHeaderContextMenu() {
     if (menu) menu.style.display = 'none';
 }
 
-// Right-click menu for Modal Tabs (Detach to New Window, Close, etc.)
 function showTabContextMenu(e, winId, tabFunc) {
-    const cleanId = tabFunc.addr.replace(/^0x0*/, '') || '0';
+    const cleanId = getCleanId(tabFunc.addr);
     const menu = document.getElementById('tabContextMenu');
     menu.innerHTML = `
         <div class="context-menu-item" onclick="detachTabToNewWindow('${winId}', '${cleanId}'); hideTabContextMenu();">🗔 Pop into New Window</div>
@@ -161,21 +159,24 @@ function hideTabContextMenu() {
 function detachTabToNewWindow(sourceWinId, cleanId) {
     const srcWin = openWindows[sourceWinId];
     if (!srcWin) return;
-    const tabFunc = srcWin.tabs.find(f => (f.addr.replace(/^0x0*/, '') || '0') === cleanId);
+    const tabFunc = srcWin.tabs.find(f => getCleanId(f.addr) === cleanId);
     if (!tabFunc) return;
+    
+    // BUGFIX: Save the current active view (asm vs decomp) so we don't reset to ASM!
+    const activeViewToTransfer = srcWin.currentView;
 
-    // Remove from source window
     closeWindowTab(null, sourceWinId, cleanId);
-
-    // Create a new window containing this function
     const newWin = createNewWindow(tabFunc);
+    
+    // Switch the new window specifically to the inherited view
+    switchWindowView(newWin.id, activeViewToTransfer);
     bringWindowToFront(newWin.id);
 }
 
 function closeOtherWindowTabs(winId, keepCleanId) {
     const win = openWindows[winId];
     if (!win) return;
-    win.tabs = win.tabs.filter(f => (f.addr.replace(/^0x0*/, '') || '0') === keepCleanId);
+    win.tabs = win.tabs.filter(f => getCleanId(f.addr) === keepCleanId);
     win.activeTabId = keepCleanId;
     renderWindowTabs(winId);
     switchWindowView(winId, win.currentView);
@@ -220,7 +221,7 @@ function minimizeWindow(winId) {
     if (!win) return;
     win.isMinimized = true;
     win.el.classList.add('minimized');
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
 function restoreWindow(winId) {
@@ -241,7 +242,7 @@ function closeWindow(winId) {
         const remaining = Object.keys(openWindows);
         activeWindowId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
     }
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
 function closeAllProjectWindows() {
@@ -251,7 +252,7 @@ function closeAllProjectWindows() {
     }
     openWindows = {};
     activeWindowId = null;
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
 function updateTaskbarUI() {
@@ -261,7 +262,7 @@ function updateTaskbarUI() {
 
     Object.keys(openWindows).forEach(winId => {
         const win = openWindows[winId];
-        const activeTab = win.tabs.find(f => (f.addr.replace(/^0x0*/, '') || '0') === win.activeTabId) || win.tabs[0];
+        const activeTab = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId) || win.tabs[0];
         const title = activeTab ? activeTab.name : 'Function Window';
         const isFocused = (activeWindowId === winId) && !win.isMinimized;
 
@@ -290,13 +291,11 @@ function updateTaskbarUI() {
     });
 }
 
-// --- TABS MANAGEMENT PER WINDOW ---
-
 function addTabToWindow(winId, func) {
     const win = openWindows[winId];
     if (!win) return;
-    const cleanId = func.addr.replace(/^0x0*/, '') || '0';
-    if (!win.tabs.find(f => (f.addr.replace(/^0x0*/, '') || '0') === cleanId)) {
+    const cleanId = getCleanId(func.addr);
+    if (!win.tabs.find(f => getCleanId(f.addr) === cleanId)) {
         win.tabs.push(func);
     }
     win.activeTabId = cleanId;
@@ -311,8 +310,40 @@ function renderWindowTabs(winId) {
     const container = document.getElementById(`${winId}_tabsContainer`);
     container.innerHTML = '';
 
+    container.addEventListener('dragover', (e) => e.preventDefault());
+    container.addEventListener('drop', (e) => {
+        if (e.target !== container) return;
+        e.preventDefault();
+        const dataStr = e.dataTransfer.getData('text/plain');
+        if (!dataStr) return;
+        try {
+            const data = JSON.parse(dataStr);
+            if (data.winId !== winId) {
+                const srcWin = openWindows[data.winId];
+                if (srcWin) {
+                    const fromIdx = srcWin.tabs.findIndex(f => getCleanId(f.addr) === data.cleanId);
+                    if (fromIdx !== -1) {
+                        const [moved] = srcWin.tabs.splice(fromIdx, 1);
+                        if (srcWin.tabs.length === 0) closeWindow(data.winId);
+                        else {
+                            if (srcWin.activeTabId === data.cleanId) {
+                                srcWin.activeTabId = getCleanId(srcWin.tabs[srcWin.tabs.length - 1].addr);
+                                switchWindowView(data.winId, srcWin.currentView);
+                            }
+                            renderWindowTabs(data.winId);
+                        }
+                        win.tabs.push(moved);
+                        win.activeTabId = getCleanId(moved.addr);
+                        renderWindowTabs(winId);
+                        switchWindowView(winId, win.currentView);
+                    }
+                }
+            }
+        } catch(err) {}
+    });
+
     win.tabs.forEach((tabFunc, index) => {
-        const cleanId = tabFunc.addr.replace(/^0x0*/, '') || '0';
+        const cleanId = getCleanId(tabFunc.addr);
         const isActive = win.activeTabId === cleanId;
         const isCombined = cleanId === 'COMBINED';
 
@@ -332,47 +363,78 @@ function renderWindowTabs(winId) {
             switchWindowView(winId, win.currentView);
         };
 
-        // Right-click tab context menu
         tabEl.oncontextmenu = (e) => {
             e.preventDefault();
             e.stopPropagation();
             showTabContextMenu(e, winId, tabFunc);
         };
 
-        // Tab Drag and Drop Reordering
         tabEl.addEventListener('dragstart', (e) => {
-            e.dataTransfer.setData('text/plain', cleanId);
+            e.dataTransfer.setData('text/plain', JSON.stringify({ winId: winId, cleanId: cleanId }));
             tabEl.style.opacity = '0.5';
         });
         tabEl.addEventListener('dragend', () => {
             tabEl.style.opacity = '1';
-            container.querySelectorAll('.modal-tab').forEach(el => el.classList.remove('drag-over'));
+            document.querySelectorAll('.modal-tab').forEach(el => el.classList.remove('drag-over'));
         });
         tabEl.addEventListener('dragover', (e) => {
             e.preventDefault();
             tabEl.classList.add('drag-over');
         });
         tabEl.addEventListener('dragleave', () => tabEl.classList.remove('drag-over'));
+        
         tabEl.addEventListener('drop', (e) => {
             e.preventDefault();
             tabEl.classList.remove('drag-over');
-            const draggedId = e.dataTransfer.getData('text/plain');
-            const targetId = cleanId;
-            if (draggedId && draggedId !== targetId) {
-                const fromIdx = win.tabs.findIndex(f => (f.addr.replace(/^0x0*/, '') || '0') === draggedId);
-                const toIdx = win.tabs.findIndex(f => (f.addr.replace(/^0x0*/, '') || '0') === targetId);
-                if (fromIdx !== -1 && toIdx !== -1) {
-                    const [moved] = win.tabs.splice(fromIdx, 1);
-                    win.tabs.splice(toIdx, 0, moved);
-                    renderWindowTabs(winId);
+            const dataStr = e.dataTransfer.getData('text/plain');
+            if (!dataStr) return;
+            try {
+                const data = JSON.parse(dataStr);
+                const draggedWinId = data.winId;
+                const draggedId = data.cleanId;
+                const targetId = cleanId;
+
+                if (draggedWinId === winId) {
+                    if (draggedId !== targetId) {
+                        const fromIdx = win.tabs.findIndex(f => getCleanId(f.addr) === draggedId);
+                        const toIdx = win.tabs.findIndex(f => getCleanId(f.addr) === targetId);
+                        if (fromIdx !== -1 && toIdx !== -1) {
+                            const [moved] = win.tabs.splice(fromIdx, 1);
+                            win.tabs.splice(toIdx, 0, moved);
+                            renderWindowTabs(winId);
+                        }
+                    }
+                } else {
+                    const srcWin = openWindows[draggedWinId];
+                    if (srcWin) {
+                        const fromIdx = srcWin.tabs.findIndex(f => getCleanId(f.addr) === draggedId);
+                        if (fromIdx !== -1) {
+                            const [moved] = srcWin.tabs.splice(fromIdx, 1);
+                            if (srcWin.tabs.length === 0) {
+                                closeWindow(draggedWinId);
+                            } else {
+                                if (srcWin.activeTabId === draggedId) {
+                                    srcWin.activeTabId = getCleanId(srcWin.tabs[srcWin.tabs.length - 1].addr);
+                                    switchWindowView(draggedWinId, srcWin.currentView);
+                                }
+                                renderWindowTabs(draggedWinId);
+                            }
+                            
+                            const toIdx = win.tabs.findIndex(f => getCleanId(f.addr) === targetId);
+                            win.tabs.splice(toIdx, 0, moved);
+                            win.activeTabId = getCleanId(moved.addr);
+                            renderWindowTabs(winId);
+                            switchWindowView(winId, win.currentView);
+                        }
+                    }
                 }
-            }
+            } catch (err) {}
         });
 
         container.appendChild(tabEl);
     });
 
-    updateTaskbarUI();
+    if (typeof updateTaskbarUI === 'function') updateTaskbarUI();
 }
 
 function closeWindowTab(event, winId, cleanId) {
@@ -380,13 +442,13 @@ function closeWindowTab(event, winId, cleanId) {
     const win = openWindows[winId];
     if (!win) return;
 
-    win.tabs = win.tabs.filter(f => (f.addr.replace(/^0x0*/, '') || '0') !== cleanId);
+    win.tabs = win.tabs.filter(f => getCleanId(f.addr) !== cleanId);
     if (win.tabs.length === 0) {
         closeWindow(winId);
     } else {
         if (win.activeTabId === cleanId) {
             const nextTab = win.tabs[win.tabs.length - 1];
-            win.activeTabId = nextTab.addr.replace(/^0x0*/, '') || '0';
+            win.activeTabId = getCleanId(nextTab.addr);
             renderWindowTabs(winId);
             switchWindowView(winId, win.currentView);
         } else {
@@ -395,7 +457,6 @@ function closeWindowTab(event, winId, cleanId) {
     }
 }
 
-// User Action: Open function window
 function openFuncWindow(func, forceNewWindow = false) {
     if (!func) return;
     if (forceNewWindow || Object.keys(openWindows).length === 0) {
@@ -405,8 +466,6 @@ function openFuncWindow(func, forceNewWindow = false) {
         addTabToWindow(targetWinId, func);
     }
 }
-
-// --- VIEWS & ACE EDITOR PER WINDOW ---
 
 function initAceEditorForWindow(winId) {
     const win = openWindows[winId];
@@ -427,7 +486,10 @@ function initAceEditorForWindow(winId) {
 
         win.aceEditor.on("change", function() {
             if (win.currentView === 'decomp' && win.activeTabId) {
-                userEditedDecompCache[win.activeTabId] = win.aceEditor.getValue();
+                const currentTabFunc = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId);
+                const targetBinary = (currentTabFunc || {}).binary || binaryPath;
+                const cacheKey = targetBinary + '|||' + win.activeTabId;
+                userEditedDecompCache[cacheKey] = win.aceEditor.getValue();
             }
         });
 
@@ -455,11 +517,14 @@ function changeWindowFontSize(winId, delta) {
 function restoreOriginalDecomp(winId) {
     const win = openWindows[winId];
     if (!win || !win.activeTabId) return;
-    const cleanAddr = win.activeTabId;
-    if (originalDecompCache[cleanAddr]) {
-        delete userEditedDecompCache[cleanAddr];
-        if (aceSessions[cleanAddr]) {
-            aceSessions[cleanAddr].setValue(originalDecompCache[cleanAddr]);
+    const currentTabFunc = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId);
+    const targetBinary = (currentTabFunc || {}).binary || binaryPath;
+    const cacheKey = targetBinary + '|||' + win.activeTabId;
+
+    if (originalDecompCache[cacheKey]) {
+        delete userEditedDecompCache[cacheKey];
+        if (aceSessions[cacheKey]) {
+            aceSessions[cacheKey].setValue(originalDecompCache[cacheKey]);
         }
     }
 }
@@ -467,15 +532,17 @@ function restoreOriginalDecomp(winId) {
 async function loadWindowAsm(winId) {
     const win = openWindows[winId];
     if (!win) return;
-    const currentTabFunc = win.tabs.find(f => (f.addr.replace(/^0x0*/, '') || '0') === win.activeTabId);
+    const currentTabFunc = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId);
     if (!currentTabFunc) return;
 
     const cleanAddr = win.activeTabId;
+    const targetBinary = currentTabFunc.binary || binaryPath;
+    const cacheKey = targetBinary + '|||' + cleanAddr;
     const dispAddr = cleanAddr === 'COMBINED' ? '🌟' : currentTabFunc.addr;
 
     const titleEl = document.getElementById(`${winId}_title`);
-    titleEl.innerText = `Viewing: ${currentTabFunc.name} (${dispAddr})`;
-    titleEl.title = `${currentTabFunc.name} (${dispAddr})`;
+    titleEl.innerText = `Viewing: ${currentTabFunc.name} (${dispAddr}) [${targetBinary.split('/').pop()}]`;
+    titleEl.title = `${currentTabFunc.name} (${dispAddr}) in ${targetBinary}`;
 
     document.getElementById(`${winId}_editorControls`).style.display = 'none';
     document.getElementById(`${winId}_modalContent`).style.display = 'block';
@@ -483,8 +550,8 @@ async function loadWindowAsm(winId) {
 
     const content = document.getElementById(`${winId}_modalContent`);
 
-    if (modalAsmCache[cleanAddr]) {
-        win.modalScroller = new VirtualScroller(`${winId}_modalContent`, modalAsmCache[cleanAddr], 'disasm');
+    if (modalAsmCache[cacheKey]) {
+        win.modalScroller = new VirtualScroller(`${winId}_modalContent`, modalAsmCache[cacheKey], 'disasm');
         return;
     }
 
@@ -494,35 +561,48 @@ async function loadWindowAsm(winId) {
     }
 
     content.innerHTML = '<div style="padding:10px;">Disassembling function...</div>';
+    
+    const optArch = document.getElementById('opt-arch') ? document.getElementById('opt-arch').value : 'x86-64';
+    const optSections = document.getElementById('opt-sections') ? document.getElementById('opt-sections').value : 'all';
+    const optSyntax = document.getElementById('opt-syntax') ? document.getElementById('opt-syntax').value : 'intel';
+    const optRaw = document.getElementById('opt-raw') ? document.getElementById('opt-raw').checked : false;
+    const optRawBin = document.getElementById('opt-raw-bin') ? document.getElementById('opt-raw-bin').checked : false;
+
     const options = {
-        arch: document.getElementById('opt-arch').value,
-        all_sections: document.getElementById('opt-sections').value === 'all',
-        syntax: document.getElementById('opt-syntax').value,
-        show_raw: document.getElementById('opt-raw').checked,
-        raw_binary: document.getElementById('opt-raw-bin').checked
+        arch: optArch,
+        sections: optSections,
+        syntax: optSyntax,
+        raw: optRaw,
+        raw_bin: optRawBin
     };
 
-    const res = await fetch(`${API}/function_code`, { 
-        method: 'POST', headers: {'Content-Type': 'application/json'}, 
-        body: JSON.stringify({ binary_path: binaryPath, start_addr: currentTabFunc.addr, options: options }) 
-    });
-    const data = await res.json();
-    modalAsmCache[cleanAddr] = data.output || "Could not extract function assembly.";
-    win.modalScroller = new VirtualScroller(`${winId}_modalContent`, modalAsmCache[cleanAddr], 'disasm');
+    try {
+        const res = await fetch(`${API}/function_code`, { 
+            method: 'POST', headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ binary_path: targetBinary, start_addr: currentTabFunc.addr, options: options }) 
+        });
+        const data = await res.json();
+        modalAsmCache[cacheKey] = data.output || "Could not extract function assembly.";
+        win.modalScroller = new VirtualScroller(`${winId}_modalContent`, modalAsmCache[cacheKey], 'disasm');
+    } catch(err) {
+        content.innerHTML = `<div style="padding:10px; color: #ff3333;">Network Error trying to disassemble.</div>`;
+    }
 }
 
 async function loadWindowDecomp(winId) {
     const win = openWindows[winId];
     if (!win) return;
-    const currentTabFunc = win.tabs.find(f => (f.addr.replace(/^0x0*/, '') || '0') === win.activeTabId);
+    const currentTabFunc = win.tabs.find(f => getCleanId(f.addr) === win.activeTabId);
     if (!currentTabFunc) return;
 
     const cleanAddr = win.activeTabId;
+    const targetBinary = currentTabFunc.binary || binaryPath;
+    const cacheKey = targetBinary + '|||' + cleanAddr;
     const dispAddr = cleanAddr === 'COMBINED' ? '🌟' : currentTabFunc.addr;
 
     const titleEl = document.getElementById(`${winId}_title`);
-    titleEl.innerText = `Viewing: ${currentTabFunc.name} (${dispAddr})`;
-    titleEl.title = `${currentTabFunc.name} (${dispAddr})`;
+    titleEl.innerText = `Viewing: ${currentTabFunc.name} (${dispAddr}) [${targetBinary.split('/').pop()}]`;
+    titleEl.title = `${currentTabFunc.name} (${dispAddr}) in ${targetBinary}`;
 
     document.getElementById(`${winId}_editorControls`).style.display = 'flex';
     document.getElementById(`${winId}_modalContent`).style.display = 'none';
@@ -531,41 +611,128 @@ async function loadWindowDecomp(winId) {
     initAceEditorForWindow(winId);
 
     let textToLoad = "";
-    if (userEditedDecompCache[cleanAddr]) {
-        textToLoad = userEditedDecompCache[cleanAddr];
-    } else if (originalDecompCache[cleanAddr]) {
-        textToLoad = originalDecompCache[cleanAddr];
+
+    // BUGFIX: Vastly improved Combined View generating Logic (Filters out hidden functions & Pins main to bottom)
+    if (cleanAddr === 'COMBINED') {
+        textToLoad = `// =========================================\n// COMBINED DECOMPILATION: ${targetBinary.split('/').pop()}\n// =========================================\n\n`;
+        
+        let combinedMap = new Map();
+        let hasMain = false;
+        
+        // 1. Gather all functions
+        Object.keys(originalDecompCache).forEach(k => {
+            if (k.startsWith(targetBinary + '|||') && !k.endsWith('|||COMBINED')) {
+                const addrClean = k.split('|||')[1];
+                const gFunc = globalFunctions.find(gf => getCleanId(gf.addr) === addrClean);
+                const code = originalDecompCache[k];
+                
+                // Heavily filter out bad/empty stubs
+                if (code.includes('WARNING: Control flow encountered bad instruction data')) return;
+                if (code.replace(/\s/g, '').length < 30) return; // Too small, likely a stub
+                
+                const fName = gFunc ? gFunc.name : "unknown_function";
+                if (fName === 'main') hasMain = true;
+                
+                combinedMap.set(addrClean, { addr: "0x" + addrClean, name: fName, code: code });
+            }
+        });
+
+        // 2. Filter out unwanted internals (starts with _) unless it's a specific entry exception
+        let filteredFuncs = Array.from(combinedMap.values()).filter(f => {
+            if (['main', '_start', 'frame_dummy'].includes(f.name) || f.name.includes('register_tm_clones')) return true;
+            if (f.name.startsWith('_')) return false; 
+            return true;
+        });
+
+        // 3. Prevent duplicate entry showing if main() is already present
+        if (hasMain) {
+            filteredFuncs = filteredFuncs.filter(f => f.name !== '_start');
+        }
+
+        // 4. Unique by name to prevent multiple 'main's or aliases
+        let uniqueNames = new Set();
+        let finalFuncs = [];
+        for (let f of filteredFuncs) {
+            if (uniqueNames.has(f.name)) continue;
+            uniqueNames.add(f.name);
+            finalFuncs.push(f);
+        }
+
+        // 5. Sort addresses logically, but force main() or _start() to the extreme bottom
+        finalFuncs.sort((a, b) => {
+            const aIsEntry = (a.name === 'main' || a.name === '_start');
+            const bIsEntry = (b.name === 'main' || b.name === '_start');
+            if (aIsEntry && !bIsEntry) return 1;
+            if (!aIsEntry && bIsEntry) return -1;
+            if (aIsEntry && bIsEntry) {
+                if (a.name === 'main') return 1;
+                if (b.name === 'main') return -1;
+            }
+            return parseInt(a.addr) - parseInt(b.addr);
+        });
+
+        if (finalFuncs.length === 0) {
+            textToLoad += "// No valid user functions found. Please click '⚡ Decompile All' first.";
+        } else {
+            finalFuncs.forEach(f => {
+                textToLoad += `/* --- ${f.name} (${f.addr}) --- */\n`;
+                textToLoad += f.code + "\n\n";
+            });
+        }
+
+        if (!aceSessions[cacheKey]) {
+            aceSessions[cacheKey] = new ace.EditSession(textToLoad, "ace/mode/c_cpp");
+            aceSessions[cacheKey].setUndoManager(new ace.UndoManager());
+        } else {
+            aceSessions[cacheKey].setValue(textToLoad);
+        }
+        win.aceEditor.setSession(aceSessions[cacheKey]);
+        return; 
+    }
+
+    if (userEditedDecompCache[cacheKey]) {
+        textToLoad = userEditedDecompCache[cacheKey];
+    } else if (originalDecompCache[cacheKey]) {
+        textToLoad = originalDecompCache[cacheKey];
     } else {
         textToLoad = "// Decompiling with Ghidra, please wait...";
     }
 
-    if (!aceSessions[cleanAddr]) {
-        aceSessions[cleanAddr] = new ace.EditSession(textToLoad, "ace/mode/c_cpp");
-        aceSessions[cleanAddr].setUndoManager(new ace.UndoManager());
+    if (!aceSessions[cacheKey]) {
+        aceSessions[cacheKey] = new ace.EditSession(textToLoad, "ace/mode/c_cpp");
+        aceSessions[cacheKey].setUndoManager(new ace.UndoManager());
     } else {
-        if (textToLoad !== "// Decompiling with Ghidra, please wait..." && aceSessions[cleanAddr].getValue().includes("Decompiling with Ghidra, please wait...")) {
-            aceSessions[cleanAddr].setValue(textToLoad);
+        if (textToLoad !== "// Decompiling with Ghidra, please wait..." && aceSessions[cacheKey].getValue().includes("Decompiling with Ghidra, please wait...")) {
+            aceSessions[cacheKey].setValue(textToLoad);
         }
     }
 
-    win.aceEditor.setSession(aceSessions[cleanAddr]);
+    win.aceEditor.setSession(aceSessions[cacheKey]);
 
-    if (!userEditedDecompCache[cleanAddr] && !originalDecompCache[cleanAddr] && cleanAddr !== 'COMBINED') {
-        const res = await fetch(`${API}/decompile`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ binary_path: binaryPath, addr: currentTabFunc.addr, name: currentTabFunc.name, file_hash: currentFileHash })
-        });
-        const data = await res.json();
-        const output = data.output || "// Decompilation output empty.";
-        originalDecompCache[cleanAddr] = output;
-        aceSessions[cleanAddr].setValue(output);
+    if (!userEditedDecompCache[cacheKey] && !originalDecompCache[cacheKey] && cleanAddr !== 'COMBINED') {
+        try {
+            const res = await fetch(`${API}/decompile`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ binary_path: targetBinary, addr: currentTabFunc.addr, name: currentTabFunc.name, file_hash: currentFileHash })
+            });
+            const data = await res.json();
+            const output = data.output || "// Decompilation output empty.";
+            originalDecompCache[cacheKey] = output;
+            aceSessions[cacheKey].setValue(output);
 
-        const el = document.getElementById(`func-item-${cleanAddr}`);
-        if (el) el.classList.add('cached');
+            const el = document.getElementById(`func-item-${cleanAddr}`);
+            if (el) {
+                el.classList.add('cached');
+                const badge = el.querySelector('.c-badge');
+                if (badge) badge.style.display = 'inline-block';
+            }
 
-        const langStr = isCpp ? "C++" : "C";
-        document.getElementById(`${winId}_btnDecomp`).innerText = `Decompiled (${langStr})`;
+            const langStr = isCpp ? "C++" : "C";
+            document.getElementById(`${winId}_btnDecomp`).innerText = `Decompiled (${langStr})`;
+        } catch(err) {
+            aceSessions[cacheKey].setValue("// Network error during decompilation.");
+        }
     }
 }
 
@@ -575,7 +742,11 @@ async function switchWindowView(winId, view) {
     win.currentView = view;
 
     const cleanAddr = win.activeTabId;
-    const isDecompiled = !!originalDecompCache[cleanAddr] && cleanAddr !== 'COMBINED';
+    const currentTabFunc = win.tabs.find(f => getCleanId(f.addr) === cleanAddr);
+    const targetBinary = (currentTabFunc || {}).binary || binaryPath;
+    const cacheKey = targetBinary + '|||' + cleanAddr;
+
+    const isDecompiled = !!originalDecompCache[cacheKey] && cleanAddr !== 'COMBINED';
     const langStr = isCpp ? "C++" : "C";
     document.getElementById(`${winId}_btnDecomp`).innerText = isDecompiled ? `Decompiled (${langStr})` : `Decompile (${langStr})`;
 

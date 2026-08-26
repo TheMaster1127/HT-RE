@@ -6,7 +6,6 @@
     <title>⚡⚡ HT-RE</title>
     <!-- ACE EDITOR CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.js"></script>
-    <!-- MATH.JS CDN for the Calculator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
     <!-- MODULAR CSS -->
     <link rel="stylesheet" href="static/css/main.css">
@@ -28,15 +27,15 @@
         <button onclick="document.getElementById('nativeFilePicker').click()" title="Select executable from file explorer">📁 Browse</button>
         <button onclick="loadBinary()">LOAD</button>
         
-        <!-- PROJECT WORKSPACE TABS -->
+        <button onclick="resetWorkspace()" style="background: #ff3333; color: #fff; border-color: #ff3333;" title="Reset all changes and clear workspaces">Reset Workspace</button>
+        
         <div class="project-tabs-container" id="projectTabsBar" title="Active Project Workspaces"></div>
 
+        <button class="export-btn" onclick="exportTrackingData()" style="color:#ffeb73; border-color:#ffeb73;" title="Export invasive tracking log for AI analysis">🕵 Export Tracking</button>
         <button class="export-btn" onclick="openExportModal()">Export JSON</button>
         
-        <!-- WINDOW TASKBAR / DOCK -->
         <div class="window-taskbar" id="windowTaskbar" title="Active Windows Dock"></div>
-
-        <span id="statusLabel" style="color:#aaa; font-size: 0.85em; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 10px;">No file loaded</span>
+        <span id="statusLabel" style="color:#aaa; font-size: 0.85em; margin-left: auto; padding-left: 10px;">No file loaded</span>
     </div>
 
     <div class="workspace">
@@ -91,6 +90,7 @@
                 <button class="tab-btn" onclick="loadFoundStrings()">Found Strings</button>
                 <button class="tab-btn patch-btn" onclick="showPatchUI()">Patch/Find (binpatch)</button>
                 <button class="tab-btn asm-btn" onclick="showAsmUI()">Dis/Assembler</button>
+                <button class="tab-btn ide-btn" onclick="showIdeUI()">C/C++ IDE</button>
                 <button class="tab-btn conv-btn" onclick="showConvUI()">Data / Calc</button>
                 <button class="tab-btn ascii-btn" onclick="showAsciiUI()">ASCII Table</button>
             </div>
@@ -124,6 +124,7 @@
             <div id="windowHeaderContextMenu" class="context-menu"></div>
             <div id="tabContextMenu" class="context-menu"></div>
             
+            <!-- Patch Panel -->
             <div id="patchPanel" class="bp-container">
                 <div class="bp-header">
                     <h2 style="color: var(--primary); margin: 0;">binpatch Interface</h2>
@@ -133,6 +134,7 @@
                     <div class="bp-tab active" onclick="switchBpTab('write')">Write / Patch</div>
                     <div class="bp-tab" onclick="switchBpTab('find')">Search / Find</div>
                     <div class="bp-tab" onclick="switchBpTab('resolve')">Disassemble (-d)</div>
+                    <div class="bp-tab" onclick="switchBpTab('history')">Patch History</div>
                 </div>
                 <div id="bp-write" class="bp-panel active">
                     <div class="bp-group"><label>Offset or VAddr (-o / -va)</label><input type="text" id="bp-w-offset" placeholder="e.g. 112b or 0x4011cd"></div>
@@ -171,9 +173,17 @@
                     <div class="bp-group"><label class="inline-check"><input type="checkbox" id="bp-r-return" checked> Stream Until Return (-r)</label></div>
                     <button class="bp-run-btn" onclick="runBinpatch('resolve')">DISASSEMBLE</button>
                 </div>
+                <div id="bp-history" class="bp-panel">
+                    <div class="bp-group">
+                        <label>Patch History (Backups)</label>
+                        <div id="bp-history-list" style="background: #000; border: 1px solid #333; min-height: 150px; padding: 10px; font-family: monospace;"></div>
+                    </div>
+                    <button class="bp-run-btn" onclick="loadPatchHistory()">Refresh History</button>
+                </div>
                 <div id="bp-output" class="bp-output">Output will appear here...</div>
             </div>
             
+            <!-- ASM Panel -->
             <div id="asmPanel" class="bp-container">
                 <div class="bp-header">
                     <h2 style="color: #55aaff; margin: 0;">Dis/Assembler</h2>
@@ -202,6 +212,137 @@
                     </div>
                 </div>
                 <div id="asm-output" class="bp-output" style="margin-top: 20px;">Output will appear here...</div>
+            </div>
+
+            <!-- C/C++ IDE PANEL -->
+            <div id="idePanel" class="bp-container" style="padding: 0;">
+                <div class="ide-split-container">
+                    
+                    <!-- LEFT COLUMN: Files & Compiled Bins -->
+                    <div class="ide-sidebar">
+                        <div class="ide-sidebar-header">
+                            <h3>📄 Project Files</h3>
+                            <button onclick="createNewIdeFile()" style="padding:2px 5px; font-size:0.8em; background:#00ffcc; color:#000; border:none;">+ New</button>
+                        </div>
+                        <div id="ide-file-list" class="ide-file-list"></div>
+                        
+                        <div class="ide-sidebar-header" style="margin-top: auto; border-top: 1px solid #333;">
+                            <h3>📦 Compiled Binaries</h3>
+                        </div>
+                        <div id="ide-compiled-list" class="ide-file-list" style="max-height: 150px; background:#0a0a0a;"></div>
+                    </div>
+                    
+                    <!-- RIGHT COLUMN: Editor & Settings -->
+                    <div class="ide-main">
+                        <div class="bp-header" style="padding: 15px 15px 5px 15px; margin:0;">
+                            <h2 style="color: #00ffcc; margin: 0;">Code Editor & Compiler</h2>
+                            <span style="color: #888; font-size: 0.9em;">Multi-file IDE with custom compilers and output detection.</span>
+                        </div>
+                        
+                        <div style="padding: 10px 15px; display: flex; gap: 15px; flex-wrap:wrap; background:#111; border-bottom: 1px solid #222; align-items:flex-end;">
+                            <div>
+                                <label style="font-size:0.8em; color:var(--primary); display:block; margin-bottom:2px;">Language</label>
+                                <select id="ide-lang" onchange="updateIdeDefaults()" style="width:120px;">
+                                    <option value="c">C</option>
+                                    <option value="cpp">C++</option>
+                                    <option value="asm">Assembly</option>
+                                </select>
+                            </div>
+                            <div style="position:relative;">
+                                <label style="font-size:0.8em; color:var(--primary); display:block; margin-bottom:2px;">Compiler/Assembler</label>
+                                <select id="ide-compiler" onchange="checkCompilerSelection()" style="width:250px;">
+                                    <!-- Populated dynamically -->
+                                </select>
+                                <button id="btnDeleteCustomCompiler" onclick="deleteActiveCustomCompiler()" style="display:none; position:absolute; right:-35px; top:18px; padding:3px 6px; background:#ff3333; color:#fff; border:none;" title="Delete this custom compiler">🗑</button>
+                            </div>
+                        </div>
+
+                        <!-- FLAGS / OPTIONS GRID (MASSIVE LIST) -->
+                        <div id="ide-flags-wrapper" class="ide-flags-container" style="margin:0; border:none; border-bottom: 1px solid #333;">
+                            <div class="ide-flags-grid">
+                                <!-- CRITICAL FLAGS PUT FIRST -->
+                                <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-static" class="ide-flag-cb"> -static</label>
+                                <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-pie" class="ide-flag-cb"> -pie</label>
+                                <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-fPIE" class="ide-flag-cb"> -fPIE</label>
+                                <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-fPIC" class="ide-flag-cb"> -fPIC</label>
+                                <label class="ide-flag-label" style="color:#ff3333; font-weight:bold;"><input type="checkbox" value="-m32" class="ide-flag-cb"> -m32</label>
+                                <label class="ide-flag-label" style="color:#00ffcc;"><input type="checkbox" value="-O0" class="ide-flag-cb"> -O0</label>
+                                <label class="ide-flag-label" style="color:#00ffcc;"><input type="checkbox" value="-O1" class="ide-flag-cb"> -O1</label>
+                                <label class="ide-flag-label" style="color:#00ffcc;"><input type="checkbox" value="-O2" class="ide-flag-cb"> -O2</label>
+                                <label class="ide-flag-label" style="color:#00ffcc;"><input type="checkbox" value="-O3" class="ide-flag-cb"> -O3</label>
+                                <label class="ide-flag-label" style="color:#00ffcc;"><input type="checkbox" value="-Os" class="ide-flag-cb"> -Os</label>
+                                <label class="ide-flag-label" style="color:#ffeb73;"><input type="checkbox" value="-Wall" class="ide-flag-cb"> -Wall</label>
+                                <label class="ide-flag-label" style="color:#55aaff;"><input type="checkbox" value="-g" class="ide-flag-cb"> -g (Debug)</label>
+                            </div>
+                            
+                            <button class="ide-more-btn" onclick="toggleMoreFlags()">Show Advanced Flags ▼</button>
+                            
+                            <div class="ide-more-flags" id="ide-more-flags">
+                                <div class="ide-flags-grid">
+                                    <label class="ide-flag-label"><input type="checkbox" value="-Ofast" class="ide-flag-cb"> -Ofast</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-Wextra" class="ide-flag-cb"> -Wextra</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-Werror" class="ide-flag-cb"> -Werror</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-Wpedantic" class="ide-flag-cb"> -Wpedantic</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-ansi" class="ide-flag-cb"> -ansi</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-std=c99" class="ide-flag-cb"> -std=c99</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-std=c++11" class="ide-flag-cb"> -std=c++11</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-std=c++17" class="ide-flag-cb"> -std=c++17</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-shared" class="ide-flag-cb"> -shared</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-nostdlib" class="ide-flag-cb"> -nostdlib</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-nodefaultlibs" class="ide-flag-cb"> -nodefaultlibs</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-nolibc" class="ide-flag-cb"> -nolibc</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-m64" class="ide-flag-cb"> -m64</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-march=native" class="ide-flag-cb"> -march=native</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-mtune=native" class="ide-flag-cb"> -mtune=native</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-masm=intel" class="ide-flag-cb"> -masm=intel</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-masm=att" class="ide-flag-cb"> -masm=att</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-fno-stack-protector" class="ide-flag-cb"> -fno-stack-protector</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-fstack-protector-all" class="ide-flag-cb"> -fstack-protector-all</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-z execstack" class="ide-flag-cb"> -z execstack</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-z noexecstack" class="ide-flag-cb"> -z noexecstack</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-z relro" class="ide-flag-cb"> -z relro</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-z now" class="ide-flag-cb"> -z now</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-Wl,-z,norelro" class="ide-flag-cb"> -Wl,-z,norelro</label>
+                                    <label class="ide-flag-label"><input type="checkbox" value="-O0 -Xlinker --omagic" class="ide-flag-cb"> --omagic</label>
+                                </div>
+                                <input type="text" id="ide-options-text" placeholder="Additional arbitrary flags (e.g. -lpthread -lm)" style="width: 100%; margin-top: 15px;">
+                            </div>
+                        </div>
+
+                        <!-- EDITOR -->
+                        <div id="ide-editor" style="flex: 1; border-bottom: 1px solid var(--border); font-size: 14px;"></div>
+                        
+                        <div style="padding: 10px; background:#111;">
+                            <div style="display: flex; gap: 10px; align-items:center;">
+                                <button class="bp-run-btn" style="background: #00ffcc; color: #000; width: auto; margin:0; padding:6px 15px;" onclick="compileCodeOnly()">⚡ COMPILE</button>
+                            </div>
+                            <div id="ide-output" class="bp-output" style="margin-top: 10px; min-height: 80px;">Compiler output will appear here...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Compiler Modal (Fixed sizing for overflow scrolling) -->
+            <div id="customCompilerModal" class="modal" style="display: none; width:500px; height:auto; max-height:90vh; overflow-y:auto; z-index: 9999; top: 5%; left: 30%;">
+                <div class="modal-header">
+                    <span style="flex:1;">Add Custom Compiler</span>
+                    <span class="win-ctrl-btn win-close-btn" onclick="document.getElementById('customCompilerModal').style.display='none'; document.getElementById('ide-compiler').value='gcc';">✕</span>
+                </div>
+                <div class="modal-body" style="padding: 15px; background: #111;">
+                    <div class="bp-group">
+                        <label>Unique Identifier Name</label>
+                        <input type="text" id="cc-name" placeholder="e.g. mips-gcc or my-fasm">
+                    </div>
+                    <div class="bp-group">
+                        <label>Absolute Path to Executable</label>
+                        <input type="text" id="cc-path" placeholder="e.g. /usr/local/bin/arm-none-eabi-gcc">
+                    </div>
+                    <div class="bp-group">
+                        <label>Default Boilerplate Code (Optional)</label>
+                        <textarea id="cc-code" style="width: 100%; height: 250px; background: #050505; color: #0f0; border: 1px solid #333; font-family: monospace; padding: 5px;"></textarea>
+                    </div>
+                    <button class="bp-run-btn" onclick="saveCustomCompiler()" style="background: #00ffcc; color:#000; margin-top:20px;">Save Custom Compiler</button>
+                </div>
             </div>
 
             <!-- ASCII TABLE PANEL -->

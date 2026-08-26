@@ -28,6 +28,11 @@ function exportConverterState() {
         if (el.id) inputs[el.id] = el.value;
     });
 
+    const selects = {};
+    document.querySelectorAll('#convPanel select:not([id^="calc-"])').forEach(el => {
+        if (el.id) selects[el.id] = el.value;
+    });
+
     const calcs = [];
     document.querySelectorAll('.calc-instance').forEach(inst => {
         const id = inst.id.replace('calc-inst-', '');
@@ -35,13 +40,14 @@ function exportConverterState() {
         const width = document.getElementById('calc-width-' + id);
         const base = document.getElementById('calc-base-' + id);
         const hist = document.getElementById('calc-hist-' + id);
-        const title = inst.querySelector('.calc-title') ? inst.querySelector('.calc-title').innerText : `Calculator #${id}`;
+        const titleEl = inst.querySelector('.calc-title');
+        const title = titleEl ? titleEl.innerText : `Calculator #${id}`;
         if (screen) {
             calcs.push({
                 id: id,
                 title: title,
                 screen: screen.value,
-                width: width ? width.value : '32',
+                width: width ? width.value : 'unlimited',
                 base: base ? base.value : 'dec',
                 historyHTML: hist ? hist.innerHTML : ''
             });
@@ -51,13 +57,14 @@ function exportConverterState() {
     return {
         currentVal: currentVal.toString(),
         inputs: inputs,
+        selects: selects,
         calcs: calcs
     };
 }
 
 // Restore state of Converter & Calculators on Project switching
 function importConverterState(state) {
-    if (!state) {
+    if (!state || !state.calcs || state.calcs.length === 0) {
         resetConverterToDefault();
         return;
     }
@@ -77,26 +84,29 @@ function importConverterState(state) {
         }
     }
 
+    if (state.selects) {
+        for (let [id, val] of Object.entries(state.selects)) {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+        }
+    }
+
     const container = document.getElementById('calculators-container');
     if (container) {
         container.innerHTML = '';
         calcCounter = 0;
 
-        if (state.calcs && state.calcs.length > 0) {
-            state.calcs.forEach(c => {
-                const newId = spawnCalculator(c.title || `Calculator #${c.id}`);
-                const screen = document.getElementById('calc-screen-' + newId);
-                const width = document.getElementById('calc-width-' + newId);
-                const base = document.getElementById('calc-base-' + newId);
-                const hist = document.getElementById('calc-hist-' + newId);
-                if (screen) screen.value = c.screen || '';
-                if (width) width.value = c.width || '32';
-                if (base) base.value = c.base || 'dec';
-                if (hist) hist.innerHTML = c.historyHTML || '';
-            });
-        } else {
-            spawnCalculator();
-        }
+        state.calcs.forEach(c => {
+            const newId = spawnCalculator(c.title || `Calculator #${c.id}`);
+            const screen = document.getElementById('calc-screen-' + newId);
+            const width = document.getElementById('calc-width-' + newId);
+            const base = document.getElementById('calc-base-' + newId);
+            const hist = document.getElementById('calc-hist-' + newId);
+            if (screen) screen.value = c.screen || '';
+            if (width) width.value = c.width || 'unlimited';
+            if (base) base.value = c.base || 'dec';
+            if (hist) hist.innerHTML = c.historyHTML || '';
+        });
     }
 }
 
@@ -345,7 +355,7 @@ math.import({
     }
 });
 
-// --- Dynamic Calculators Management ---
+// --- Dynamic Calculators Management (Default: Unlimited Float) ---
 let calcCounter = 0;
 
 function spawnCalculator(customTitle = null) {
@@ -359,14 +369,14 @@ function spawnCalculator(customTitle = null) {
                 <span class="calc-title" style="color:#55aaff; font-size:0.85em; font-weight:bold; margin-right:10px;">${escapeHTML(title)}</span>
                 <div style="display:flex; gap:5px; align-items:center;">
                     <select id="calc-width-${id}" style="background:#222; border:1px solid #444; color:#aaa; font-size:0.8em; padding:2px;">
-                        <option value="unlimited">Unlimited (Float)</option>
+                        <option value="unlimited" selected>Unlimited (Float)</option>
                         <option value="8">8-bit</option>
                         <option value="16">16-bit</option>
-                        <option value="32" selected>32-bit</option>
+                        <option value="32">32-bit</option>
                         <option value="64">64-bit</option>
                     </select>
                     <select id="calc-base-${id}" style="background:#222; border:1px solid #444; color:#aaa; font-size:0.8em; padding:2px;" onchange="calcEvaluate(${id})">
-                        <option value="dec">Dec</option>
+                        <option value="dec" selected>Dec</option>
                         <option value="hex">Hex</option>
                         <option value="bin">Bin</option>
                     </select>
@@ -446,7 +456,8 @@ function deleteAllCalculators() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    if (document.querySelectorAll('.calc-instance').length === 0) {
+    const container = document.getElementById('calculators-container');
+    if (container && container.children.length === 0) {
         spawnCalculator();
     }
     generateAsciiTable();

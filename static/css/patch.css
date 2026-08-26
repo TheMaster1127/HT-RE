@@ -15,7 +15,36 @@
 .bp-group { margin-bottom: 15px; }
 .bp-group label { display: block; margin-bottom: 5px; color: var(--primary); font-size: 0.9em; }
 .bp-group input[type="text"] { width: 100%; padding: 8px; }
+.bp-group textarea { font-family: monospace; }
 .bp-group .inline-check { display: inline-flex; align-items: center; gap: 5px; margin-right: 15px; color: #ccc; cursor: pointer; font-size: 0.9em; }
 .bp-run-btn { background: var(--primary); color: #000; padding: 10px 20px; border: none; font-weight:bold; font-size: 1.1em; width: 100%; margin-top: 10px; }
-.bp-run-btn:hover { background: #ff8533; }
-.bp-output { margin-top: 20px; background: #000; padding: 15px; border: 1px solid var(--border); color: #0f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; }
+.bp-run-btn:hover:not(:disabled) { background: #ff8533; }
+.bp-output { margin-top: 20px; background: #000; padding: 15px; border: 1px solid var(--border); color: #0f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; overflow-y: auto; }
+
+/* History & Backup specific styling */
+.history-item-row { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #222; align-items: center; }
+.history-item-row:hover { background: #111; }
+.history-restore-btn { background: #ff9900; color: #000; padding: 2px 5px; font-size: 0.8em; border: none; cursor: pointer; }
+.history-restore-btn:hover { background: #e68a00; }
+
+/* IDE Specific Styles (Split layout) */
+.ide-split-container { display: flex; flex: 1; min-height: 0; }
+.ide-sidebar { width: 250px; background: #111; border-right: 1px solid #333; display: flex; flex-direction: column; }
+.ide-sidebar-header { background: #1a1a1a; padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+.ide-sidebar-header h3 { margin: 0; font-size: 0.9em; color: var(--primary); }
+.ide-main { flex: 1; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+
+.ide-file-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
+.ide-file-item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #222; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; color: #aaa; }
+.ide-file-item:hover { background: #1a1a1a; color: #fff; }
+.ide-file-item.active { background: #222; color: #00ffcc; border-left: 3px solid #00ffcc; }
+.ide-file-item.compiled:hover { background: #1a1a1a; color: #ffeb73; border-left: 3px solid #ffeb73; }
+.ide-tab-close { color: #555; padding: 0 4px; border-radius: 2px; }
+.ide-tab-close:hover { color: #ff3333; background: #333; }
+
+.ide-flags-container { background: #151515; padding: 10px 15px; border: 1px solid #333; }
+.ide-flags-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.ide-flag-label { display: flex; align-items: center; gap: 5px; font-size: 0.85em; color: #ccc; cursor: pointer; }
+.ide-flag-cb { cursor: pointer; }
+.ide-more-btn { background: transparent; border: none; color: #55aaff; font-size: 0.85em; cursor: pointer; padding: 5px 0; margin-top: 8px; text-decoration: underline; display: inline-block; }
+.ide-more-flags { display: none; margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px; }

@@ -2,6 +2,9 @@ import os
 import re
 import tempfile
 import subprocess
+import time
+import shutil
+import json
 from backend.utils import validate, get_as_cmd, get_objcopy_cmd, get_objdump_cmd
 
 def handle_binpatch(data):
@@ -12,11 +15,24 @@ def handle_binpatch(data):
 
     cmd = ['binpatch', path]
     if mode == 'write':
+        dir_name = os.path.dirname(path)
+        base_name = os.path.basename(path)
+        
+        orig_path = os.path.join(dir_name, base_name + "_original_")
+        if not os.path.exists(orig_path):
+            try: shutil.copy2(path, orig_path)
+            except: pass
+            
+        if data.get('backup'):
+            timestamp = int(time.time())
+            backup_path = os.path.join(dir_name, f"{base_name}_backup_{timestamp}")
+            try: shutil.copy2(path, backup_path)
+            except: pass
+
         cmd.append('-va' if data.get('is_va') else '-o')
         cmd.append(data.get('offset', ''))
         cmd.extend(['-h', data.get('hex', '')])
-        if data.get('backup'):
-            cmd.append('-b')
+        
     elif mode == 'find':
         cmd.append('-fh' if data.get('heuristic') else '-f')
         cmd.append(data.get('hex', ''))
@@ -43,7 +59,6 @@ def handle_binpatch(data):
     except Exception as e:
         return {'error': f'Failed to run binpatch: {str(e)}'}
 
-
 def handle_assemble(data):
     asm_code = data.get('asm', '').strip()
     arch = data.get('arch', 'x86-64')
@@ -52,7 +67,6 @@ def handle_assemble(data):
     as_cmd = get_as_cmd(arch)
     objcopy_cmd = get_objcopy_cmd(arch)
 
-    # Ensure instructions fall properly into text space and force intel syntax on x86 by default
     prefix = ".text\n"
     if arch == 'x86-64' and '.intel_syntax' not in asm_code:
         prefix = ".intel_syntax noprefix\n.text\n"
@@ -81,7 +95,6 @@ def handle_assemble(data):
 
         hex_str = ' '.join(f'{b:02x}' for b in raw_bytes)
         return {'hex': hex_str, 'output': 'Assembly successful.'}
-
 
 def handle_disassemble_raw(data):
     hex_str = data.get('hex', '').replace(' ', '').replace('0x', '').replace(',', '').replace('\\x', '').strip()
@@ -124,3 +137,103 @@ def handle_disassemble_raw(data):
             return {'error': 'Could not disassemble the provided bytes.'}
 
         return {'asm': '\n'.join(asm_lines), 'output': 'Disassembly successful.'}
+
+def handle_compile(data):
+    code = data.get('code', '')
+    lang = data.get('lang', 'c') 
+    compiler = data.get('compiler', 'gcc')
+    options = data.get('options', '')
+    
+    # Safely construct universal upload directory in OS Temp to bypass permission errors
+    UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "htre_uploads")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    timestamp = int(time.time())
+    out_name = f"compiled_{timestamp}.bin"
+    final_out_path = os.path.join(UPLOAD_DIR, out_name)
+
+    # Use an isolated temp directory to prevent any "Permission Denied" for source.c
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_filename = "source.c" if lang == 'c' else ("source.cpp" if lang == 'cpp' else "source.asm")
+        src_file = os.path.join(tmpdir, src_filename)
+        tmp_out = os.path.join(tmpdir, "a.out")
+        
+        with open(src_file, 'w') as f:
+            f.write(code)
+            
+        if lang in ['c', 'cpp']:
+            cmd = f"{compiler} {options} \"{src_file}\" -o \"{tmp_out}\""
+        else: # asm
+            if compiler == 'nasm':
+                cmd = f"nasm {options} -f elf64 \"{src_file}\" -o \"{tmpdir}/out.o\" && ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
+            elif compiler == 'fasm':
+                cmd = f"fasm \"{src_file}\" \"{tmp_out}\""
+            elif compiler == 'gas' or compiler == 'as':
+                cmd = f"as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
+            elif compiler == 'arm-linux-gnueabihf-as':
+                cmd = f"arm-linux-gnueabihf-as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && arm-linux-gnueabihf-ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
+            elif compiler == 'aarch64-linux-gnu-as':
+                cmd = f"aarch64-linux-gnu-as {options} \"{src_file}\" -o \"{tmpdir}/out.o\" && aarch64-linux-gnu-ld \"{tmpdir}/out.o\" -o \"{tmp_out}\""
+            else:
+                # Custom fallback
+                cmd = f"{compiler} {options} \"{src_file}\" -o \"{tmp_out}\""
+
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        
+        # Intelligent Output Detection: If tmp_out doesn't exist, maybe it ignored the -o flag.
+        if not os.path.exists(tmp_out):
+            new_files = [f for f in os.listdir(tmpdir) if f != src_filename and not f.endswith('.o')]
+            if new_files:
+                tmp_out = os.path.join(tmpdir, new_files[0])
+        
+        # Copy to the final directory and ensure executable rights
+        if os.path.exists(tmp_out):
+            shutil.copy2(tmp_out, final_out_path)
+            try:
+                os.chmod(final_out_path, 0o755)
+            except:
+                pass
+            return {'path': final_out_path, 'output': f"Compiled successfully: {final_out_path}\n{res.stdout}\n{res.stderr}"}
+        else:
+            return {'error': f"Failed to generate output file.\n{res.stderr}\n{res.stdout}"}
+
+def get_patch_history(data):
+    path = data.get('binary_path', '')
+    if not os.path.exists(path):
+        return {'history': []}
+    
+    dir_name = os.path.dirname(path)
+    base_name = os.path.basename(path)
+    history = []
+    
+    for f in os.listdir(dir_name):
+        if f.startswith(base_name + "_original_") or f.startswith(base_name + "_backup_"):
+            history.append(os.path.join(dir_name, f))
+            
+    history.sort()
+    return {'history': history}
+
+def restore_patch(data):
+    target = data.get('binary_path', '')
+    backup = data.get('backup_path', '')
+    if os.path.exists(backup) and os.path.exists(target):
+        try:
+            shutil.copy2(backup, target)
+            return {'success': True}
+        except Exception as e:
+            return {'error': str(e)}
+    return {'error': 'File not found'}
+
+def track_action(data):
+    try:
+        if not os.path.exists('tracking.json'):
+            with open('tracking.json', 'w') as f:
+                json.dump([], f)
+        with open('tracking.json', 'r') as f:
+            tracking = json.load(f)
+        tracking.append(data)
+        with open('tracking.json', 'w') as f:
+            json.dump(tracking, f)
+    except Exception:
+        pass
+    return {'status': 'ok'}

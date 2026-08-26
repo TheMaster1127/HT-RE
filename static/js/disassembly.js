@@ -1,73 +1,90 @@
 async function loadDisasm(forceReload = false) {
-    if (typeof saveCurrentTabScroll === 'function') {
-        saveCurrentTabScroll();
-    }
-    updateTabs('disasm');
+    if (!binaryPath) return;
+    if (typeof updateTabs === 'function') updateTabs('disasm');
+
+    const optArch = document.getElementById('opt-arch') ? document.getElementById('opt-arch').value : 'x86-64';
+    const optSections = document.getElementById('opt-sections') ? document.getElementById('opt-sections').value : 'all';
+    const optSyntax = document.getElementById('opt-syntax') ? document.getElementById('opt-syntax').value : 'intel';
+    const optRaw = document.getElementById('opt-raw') ? document.getElementById('opt-raw').checked : false;
+    const optRawBin = document.getElementById('opt-raw-bin') ? document.getElementById('opt-raw-bin').checked : false;
+
+    const options = { arch: optArch, sections: optSections, syntax: optSyntax, raw: optRaw, raw_bin: optRawBin };
+    const settingsStr = JSON.stringify(options);
+    const cacheKey = binaryPath + '|||disasm';
+    const outputEl = document.getElementById('output');
     
-    // Check if we already have the disassembly cached in memory for the active project
-    const cachedText = (openProjects[binaryPath] && openProjects[binaryPath].disasmText) || (tabDataCache['disasm'] && tabDataCache['disasm'].output);
-    if (!forceReload && cachedText) {
-        mainScroller = new VirtualScroller('output', cachedText, 'disasm');
-        const savedScroll = tabScrollPositions['disasm'] !== undefined 
-            ? tabScrollPositions['disasm'] 
-            : (openProjects[binaryPath] && openProjects[binaryPath].scrollPos !== undefined ? openProjects[binaryPath].scrollPos : 0);
-        if (mainScroller.container) {
-            mainScroller.container.scrollTop = savedScroll;
-            mainScroller.render();
-        }
+    if (!outputEl) return;
+
+    // ISOLATED SCROLL LOOKUP FOR THIS SPECIFIC BINARY
+    let savedScroll = 0;
+    if (tabScrollPositions[cacheKey] !== undefined) {
+        savedScroll = tabScrollPositions[cacheKey];
+    } else if (openProjects[binaryPath] && openProjects[binaryPath].scrolls && openProjects[binaryPath].scrolls['disasm'] !== undefined) {
+        savedScroll = openProjects[binaryPath].scrolls['disasm'];
+    }
+
+    const cachedText = (tabDataCache[cacheKey] && tabDataCache[cacheKey].output);
+    const settingsMatch = tabDataCache[cacheKey] && tabDataCache[cacheKey].settings === settingsStr;
+
+    if (!forceReload && cachedText && settingsMatch) {
+        mainScroller = new VirtualScroller('output', cachedText, 'disasm', savedScroll, binaryPath);
         return;
     }
 
-    document.getElementById('output').innerHTML = '<div style="padding:10px;">Disassembling...</div>';
-    const options = {
-        arch: document.getElementById('opt-arch').value,
-        all_sections: document.getElementById('opt-sections').value === 'all',
-        syntax: document.getElementById('opt-syntax').value,
-        show_raw: document.getElementById('opt-raw').checked,
-        raw_binary: document.getElementById('opt-raw-bin').checked
-    };
-    const res = await fetch(`${API}/objdump-d`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({binary_path: binaryPath, options: options})
-    });
-    const data = await res.json();
-    const disasmOut = data.output || "";
+    outputEl.innerHTML = '<div style="padding:10px;">Disassembling binary...</div>';
     
-    if (openProjects[binaryPath]) {
-        openProjects[binaryPath].disasmText = disasmOut;
-    }
-    tabDataCache['disasm'] = { output: disasmOut, mode: 'disasm' };
-
-    mainScroller = new VirtualScroller('output', disasmOut, 'disasm');
-    const savedScroll = tabScrollPositions['disasm'] || 0;
-    if (savedScroll && mainScroller.container) {
-        mainScroller.container.scrollTop = savedScroll;
-        mainScroller.render();
+    try {
+        const res = await fetch(`${API}/objdump-d`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({binary_path: binaryPath, options: options})
+        });
+        const data = await res.json();
+        
+        const disasmOut = data.output || data.error || "No disassembly output available.";
+        tabDataCache[cacheKey] = { output: disasmOut, mode: 'disasm', settings: settingsStr };
+        
+        mainScroller = new VirtualScroller('output', disasmOut, 'disasm', savedScroll, binaryPath);
+    } catch(err) {
+        outputEl.innerHTML = `<div style="padding:10px; color:#ff3333;">Error disassembling: ${err.message}</div>`;
     }
 }
 
-function saveHistory(addressStr) {
-    if (!addressStr) return;
-    navHistory.push(addressStr);
+function saveHistory(item) {
+    if (!item) return;
+    
+    if (navHistory.length > 0) {
+        const last = navHistory[navHistory.length - 1];
+        if (typeof item === 'object' && typeof last === 'object') {
+            if (Math.abs(item.scroll - last.scroll) < 10 && item.bin === last.bin) return;
+        } else if (item === last) {
+            return;
+        }
+    }
+    
+    navHistory.push(item);
     const btnBack = document.getElementById('btnBack');
     if (btnBack) btnBack.disabled = false;
 }
 
 function recordPosition(historyArg) {
-    if (currentTab !== 'disasm' || !mainScroller) return;
+    if (currentTab !== 'disasm' || !mainScroller || !mainScroller.isReady) return;
     
-    if (typeof historyArg === 'string') {
+    if (historyArg === true) {
+        const currentScroll = mainScroller.container.scrollTop;
+        const startIndex = Math.max(0, Math.floor(currentScroll / mainScroller.lineHeight));
+        const addr = mainScroller.getCurrentAddress();
+        saveHistory({ scroll: currentScroll, line: startIndex, addr: addr, bin: binaryPath });
+    } else if (typeof historyArg === 'string') {
         saveHistory(historyArg);
-    } else if (historyArg === true) {
-        const currentAddr = mainScroller.getCurrentAddress();
-        if (currentAddr) saveHistory(currentAddr);
+    } else if (typeof historyArg === 'object' && historyArg !== null) {
+        saveHistory(historyArg);
     }
 }
 
 function jumpToSym(symName, historyArg = true) {
-    if (!mainScroller) return;
-    const targetIndex = mainScroller.lines.findIndex(line => line.includes(`<${symName}>:`));
+    if (!mainScroller || !mainScroller.lines) return;
+    const targetIndex = mainScroller.lines.findIndex(line => line.includes(`<${symName}>:`) || line.includes(`<${symName}>`));
     if (targetIndex !== -1) {
         recordPosition(historyArg);
         mainScroller.scrollToIndex(targetIndex);
@@ -77,15 +94,16 @@ function jumpToSym(symName, historyArg = true) {
 }
 
 function jumpTo(addr, historyArg = true) {
-    if (!mainScroller) return;
+    if (!mainScroller || !mainScroller.lines) return;
     
     recordPosition(historyArg);
     
-    let search = addr.trim().toLowerCase().replace(/^0x/, '').replace(/^0+/, ''); 
-    if (!search) search = '0';
+    const raw = addr.toString().trim();
+    const rawLower = raw.toLowerCase();
+    const hexClean = rawLower.replace(/^0x/, '').replace(/^0+/, '') || '0';
 
     if (currentTab === 'hexdump') {
-        const num = parseInt(search, 16);
+        const num = parseInt(hexClean, 16);
         if (!isNaN(num)) {
             const row = (num - (num % 16)).toString(16).padStart(8, '0') + ':';
             const targetIndex = mainScroller.lines.findIndex(line => line.toLowerCase().startsWith(row));
@@ -95,35 +113,75 @@ function jumpTo(addr, historyArg = true) {
             }
         }
     } else if (currentTab === 'disasm') {
-        search = search + ':';
-        
-        const targetIndex = mainScroller.lines.findIndex(line => {
-            const lowerLine = line.toLowerCase();
-            return lowerLine.includes(search) && lowerLine.split(':')[0].endsWith(search.replace(':', ''));
+        // Priority 1: Exact Function Label Header (e.g. "<main>:", "<_start>:")
+        let targetIndex = mainScroller.lines.findIndex(line => {
+            return line.toLowerCase().includes('<' + rawLower + '>:');
         });
+
+        // Priority 2: Function Label containing symbol (e.g. "<main>")
+        if (targetIndex === -1) {
+            targetIndex = mainScroller.lines.findIndex(line => {
+                return line.toLowerCase().includes('<' + rawLower + '>');
+            });
+        }
+
+        // Priority 3: Exact Address Match on Disassembly Line
+        if (targetIndex === -1) {
+            targetIndex = mainScroller.lines.findIndex(line => {
+                const m = line.match(/^\s*([0-9a-fA-F]+):/);
+                if (m) {
+                    const lineAddr = m[1].toLowerCase().replace(/^0+/, '') || '0';
+                    return lineAddr === hexClean;
+                }
+                const mFunc = line.match(/^([0-9a-fA-F]+)\s+<([^>]+)>:/);
+                if (mFunc) {
+                    const funcAddr = mFunc[1].toLowerCase().replace(/^0+/, '') || '0';
+                    return funcAddr === hexClean;
+                }
+                return false;
+            });
+        }
+
+        // Priority 4: Fallback line substring search
+        if (targetIndex === -1) {
+            targetIndex = mainScroller.lines.findIndex(line => {
+                return line.toLowerCase().includes(hexClean + ':');
+            });
+        }
 
         if (targetIndex !== -1) {
             mainScroller.scrollToIndex(targetIndex);
             return;
-        } else {
-            const fallbackIndex = mainScroller.lines.findIndex(line => line.toLowerCase().includes(search));
-            if (fallbackIndex !== -1) {
-                mainScroller.scrollToIndex(fallbackIndex);
-                return;
-            }
         }
     }
     alert(`Could not find ${addr} in this view.\nTip: For addresses, check "All sections" in Disasm.`);
 }
 
 function goBack() {
-    if (navHistory.length > 0) {
-        const prevAddr = navHistory.pop();
-        jumpTo(prevAddr, false); 
-        if (navHistory.length === 0) {
-            const btnBack = document.getElementById('btnBack');
-            if (btnBack) btnBack.disabled = true;
+    if (navHistory.length === 0) return;
+    const prev = navHistory.pop();
+    const btnBack = document.getElementById('btnBack');
+    if (btnBack) btnBack.disabled = (navHistory.length === 0);
+
+    if (!prev) return;
+
+    if (typeof prev === 'object' && prev !== null) {
+        if (prev.bin && prev.bin !== binaryPath) {
+            document.getElementById('binaryPath').value = prev.bin;
+            loadBinary().then(() => {
+                if (mainScroller && prev.scroll !== undefined) {
+                    mainScroller.restoreScroll(prev.scroll);
+                }
+            });
+            return;
         }
+        if (mainScroller && prev.scroll !== undefined) {
+            mainScroller.restoreScroll(prev.scroll);
+        } else if (prev.addr) {
+            jumpTo(prev.addr, false);
+        }
+    } else if (typeof prev === 'string') {
+        jumpTo(prev, false);
     }
 }
 

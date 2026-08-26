@@ -1,339 +1,229 @@
-// Native File Browser handling
-async function handleFilePicked(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    document.getElementById('statusLabel').innerText = "Uploading selected file...";
-
-    try {
-        const res = await fetch(`${API}/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        if (data.path) {
-            document.getElementById('binaryPath').value = data.path;
-            await loadBinary();
-        } else {
-            alert("File upload failed: " + (data.error || "Unknown error"));
-        }
-    } catch (e) {
-        alert("Error selecting file: " + e.message);
-    }
-}
-
-// Workspace Project State Serialization
+// Centralized, bulletproof project serializer
 function saveCurrentProjectState() {
     if (!binaryPath) return;
-
-    if (typeof saveCurrentTabScroll === 'function') {
-        saveCurrentTabScroll();
+    if (!openProjects[binaryPath]) {
+        openProjects[binaryPath] = { path: binaryPath, name: binaryPath.split('/').pop() };
     }
-
-    const windowsState = [];
-    Object.keys(openWindows).forEach(winId => {
-        const win = openWindows[winId];
-        if (win && win.el) {
-            windowsState.push({
-                id: winId,
-                tabs: [...win.tabs],
-                activeTabId: win.activeTabId,
-                currentView: win.currentView,
-                fontSize: win.fontSize || 14,
-                isMaximized: !!win.isMaximized,
-                isMinimized: !!win.isMinimized,
-                geom: {
-                    left: win.el.style.left,
-                    top: win.el.style.top,
-                    width: win.el.style.width,
-                    height: win.el.style.height
-                }
-            });
-        }
-    });
-
-    const scrollPos = (mainScroller && mainScroller.container) ? mainScroller.container.scrollTop : (tabScrollPositions['disasm'] || 0);
-    const existingDisasm = openProjects[binaryPath] ? openProjects[binaryPath].disasmText : (tabDataCache['disasm'] ? tabDataCache['disasm'].output : '');
-
-    openProjects[binaryPath] = {
-        binaryPath: binaryPath,
-        currentFileHash: currentFileHash,
-        navHistory: [...navHistory],
-        currentTab: currentTab,
-        globalFunctions: [...globalFunctions],
-        isCpp: isCpp,
-        originalDecompCache: { ...originalDecompCache },
-        userEditedDecompCache: { ...userEditedDecompCache },
-        modalAsmCache: { ...modalAsmCache },
-        tabDataCache: { ...tabDataCache },
-        tabScrollPositions: { ...tabScrollPositions },
-        disasmText: existingDisasm,
-        scrollPos: scrollPos,
-        windowsState: windowsState,
-        activeWindowId: activeWindowId,
-        converterState: exportConverterState(),
-        options: {
-            arch: document.getElementById('opt-arch').value,
-            sections: document.getElementById('opt-sections').value,
-            syntax: document.getElementById('opt-syntax').value,
-            raw: document.getElementById('opt-raw').checked,
-            raw_bin: document.getElementById('opt-raw-bin').checked
-        }
-    };
-}
-
-function restoreProjectState(state) {
-    if (!state) return;
-
-    // Completely wipe all current floating windows from previous workspace
-    closeAllProjectWindows();
-
-    binaryPath = state.binaryPath;
-    currentFileHash = state.currentFileHash;
-    navHistory = [...(state.navHistory || [])];
-    currentTab = state.currentTab || 'disasm';
-    globalFunctions = [...(state.globalFunctions || [])];
-    isCpp = !!state.isCpp;
-    originalDecompCache = { ...(state.originalDecompCache || {}) };
-    userEditedDecompCache = { ...(state.userEditedDecompCache || {}) };
-    modalAsmCache = { ...(state.modalAsmCache || {}) };
-    tabDataCache = { ...(state.tabDataCache || {}) };
-    tabScrollPositions = { ...(state.tabScrollPositions || {}) };
-
-    for (let key in aceSessions) delete aceSessions[key];
-
-    // Restore Back Button Status
-    const btnBack = document.getElementById('btnBack');
-    if (btnBack) btnBack.disabled = (navHistory.length === 0);
-
-    if (state.options) {
-        document.getElementById('opt-arch').value = state.options.arch || 'x86-64';
-        document.getElementById('opt-sections').value = state.options.sections || 'all';
-        document.getElementById('opt-syntax').value = state.options.syntax || 'intel';
-        document.getElementById('opt-raw').checked = !!state.options.raw;
-        document.getElementById('opt-raw-bin').checked = !!state.options.raw_bin;
-    }
-
-    const langStr = isCpp ? "C++" : "C";
-    const btnShowAll = document.getElementById('btnShowAll');
-    if (btnShowAll) btnShowAll.innerText = `Show All in One (${langStr})`;
-    document.querySelectorAll('.dyn-c-lang').forEach(el => el.innerText = langStr);
-
-    const btnAll = document.getElementById('btnDecompAll');
-    if (originalDecompCache['BATCH_COMPLETE']) {
-        btnAll.innerText = "✓ Decompiled Already";
-    } else {
-        btnAll.innerText = "⚡ Decompile All";
-    }
-
-    // Restore Converter and Calculators state specifically for this project
-    importConverterState(state.converterState);
-
-    document.getElementById('binaryPath').value = binaryPath;
-    document.getElementById('statusLabel').innerHTML = `Working: <span style="color:#fff;" title="${binaryPath}">${binaryPath}</span>`;
-
-    renderProjectTabs();
-    loadFunctions();
-
-    // Reconstruct all saved windows specifically belonging to this project
-    if (state.windowsState && state.windowsState.length > 0) {
-        state.windowsState.forEach(winData => {
-            if (winData.tabs && winData.tabs.length > 0) {
-                const winObj = createNewWindow(null, winData.geom);
-                winObj.tabs = [...winData.tabs];
-                winObj.activeTabId = winData.activeTabId;
-                winObj.currentView = winData.currentView || 'asm';
-                winObj.fontSize = winData.fontSize || 14;
-                winObj.isMaximized = !!winData.isMaximized;
-                winObj.isMinimized = !!winData.isMinimized;
-
-                if (winObj.isMaximized) winObj.el.classList.add('maximized');
-                if (winObj.isMinimized) winObj.el.classList.add('minimized');
-
-                renderWindowTabs(winObj.id);
-                switchWindowView(winObj.id, winObj.currentView);
-            }
-        });
-
-        if (state.activeWindowId && openWindows[state.activeWindowId]) {
-            bringWindowToFront(state.activeWindowId);
-        }
-    }
-
-    updateTabs(currentTab);
     
-    // Restore tab content and scroll position without re-fetching
-    if (currentTab === 'disasm') {
-        const disasmContent = state.disasmText || (tabDataCache['disasm'] && tabDataCache['disasm'].output);
-        if (disasmContent) {
-            mainScroller = new VirtualScroller('output', disasmContent, 'disasm');
-            const targetScroll = tabScrollPositions['disasm'] !== undefined ? tabScrollPositions['disasm'] : (state.scrollPos || 0);
-            if (mainScroller.container) {
-                mainScroller.container.scrollTop = targetScroll;
-                mainScroller.render();
-            }
-        } else {
-            loadDisasm();
-        }
-    } else if (currentTab === 'foundStrings') {
-        loadFoundStrings();
-    } else if (['header', 'sections', 'hexdump', 'relocs', 'strings'].includes(currentTab)) {
-        const cmdMap = {
-            'header': 'readelf-h',
-            'sections': 'readelf-S',
-            'hexdump': 'hexdump',
-            'relocs': 'objdump-R',
-            'strings': 'strings'
-        };
-        runCmd(cmdMap[currentTab], currentTab);
+    // 1. Active Tab
+    openProjects[binaryPath].activeTab = currentTab;
+    
+    // 2. Active Tab Scroll
+    if (mainScroller && mainScroller.container && mainScroller.isReady && (mainScroller.ownerBinary === binaryPath)) {
+        const pos = mainScroller.container.scrollTop;
+        const key = binaryPath + '|||' + currentTab;
+        tabScrollPositions[key] = pos;
+        if (!openProjects[binaryPath].scrolls) openProjects[binaryPath].scrolls = {};
+        openProjects[binaryPath].scrolls[currentTab] = pos;
     }
-}
-
-function renderProjectTabs() {
-    const container = document.getElementById('projectTabsBar');
-    if (!container) return;
-    container.innerHTML = '';
-
-    Object.keys(openProjects).forEach(path => {
-        const isActive = path === binaryPath;
-        const name = path.split('/').pop() || path;
-        
-        const tabEl = document.createElement('div');
-        tabEl.className = `project-tab ${isActive ? 'active' : ''}`;
-        tabEl.title = path;
-        tabEl.innerHTML = `
-            <span class="project-tab-name">📁 ${escapeHTML(name)}</span>
-            <span class="project-tab-close" onclick="closeProjectTab(event, '${path.replace(/'/g, "\\'")}')" title="Close Project">×</span>
-        `;
-        tabEl.onclick = () => switchProject(path);
-        container.appendChild(tabEl);
-    });
-}
-
-function switchProject(path) {
-    if (path === binaryPath) return;
-    saveCurrentProjectState();
-    if (openProjects[path]) {
-        restoreProjectState(openProjects[path]);
-    }
-}
-
-function closeProjectTab(event, path) {
-    if (event) event.stopPropagation();
-    delete openProjects[path];
-
-    if (path === binaryPath) {
-        closeAllProjectWindows();
-        const remaining = Object.keys(openProjects);
-        if (remaining.length > 0) {
-            restoreProjectState(openProjects[remaining[0]]);
-        } else {
-            binaryPath = '';
-            document.getElementById('binaryPath').value = '';
-            document.getElementById('statusLabel').innerHTML = 'No file loaded';
-            document.getElementById('funcList').innerHTML = '';
-            document.getElementById('output').innerHTML = '';
-            mainScroller = null;
-            tabDataCache = {};
-            tabScrollPositions = {};
-            resetConverterToDefault();
-            renderProjectTabs();
-        }
-    } else {
-        renderProjectTabs();
+    
+    // 3. Converter & All Spawned Calculators
+    if (typeof exportConverterState === 'function') {
+        openProjects[binaryPath].converterState = exportConverterState();
     }
 }
 
 async function loadBinary() {
-    const newPath = document.getElementById('binaryPath').value.trim();
-    if (!newPath) return;
-
-    // Save previous active binary workspace
-    if (binaryPath) {
-        saveCurrentProjectState();
+    const p = document.getElementById('binaryPath').value;
+    if (!p) return;
+    
+    // 1. SAVE THE ACTIVE PROJECT'S COMPLETE STATE BEFORE LOADING A NEW ONE
+    saveCurrentProjectState();
+    
+    // 2. Deactivate previous scroller so its DOM teardown won't leak events
+    if (mainScroller) {
+        mainScroller.isReady = false;
     }
 
-    // Instantly wipe all open windows from the screen
-    closeAllProjectWindows();
+    localStorage.setItem('htre_last_binary', p);
+    document.getElementById('statusLabel').innerText = "Loading " + p + "...";
+    if (typeof trackAction === 'function') trackAction("LOAD_BINARY", { path: p });
 
-    // If this binary is already opened in a project tab, just switch to it cleanly
-    if (openProjects[newPath]) {
-        restoreProjectState(openProjects[newPath]);
-        return;
-    }
+    globalFunctions = [];
+    currentFileHash = '';
+    const funcListEl = document.getElementById('funcList');
+    if (funcListEl) funcListEl.innerHTML = '';
 
-    // Brand new binary: start with a fresh data converter & calculator
-    resetConverterToDefault();
-
-    binaryPath = newPath;
-    tabDataCache = {};
-    tabScrollPositions = {};
-
-    const btnAll = document.getElementById('btnDecompAll');
-    btnAll.innerText = "⚡ Decompile All";
-    btnAll.disabled = false;
-    
-    // Background language detection
-    const gRes = await fetch(`${API}/generic`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, cmd: 'readelf-h'}) });
-    const gData = await gRes.json();
-    isCpp = gData.output && gData.output.includes("Compiler Language: C++");
-    
-    const langStr = isCpp ? "C++" : "C";
-
-    const btnShowAll = document.getElementById('btnShowAll');
-    if (btnShowAll) btnShowAll.innerText = `Show All in One (${langStr})`;
-    document.querySelectorAll('.dyn-c-lang').forEach(el => el.innerText = langStr);
-
-    const res = await fetch(`${API}/load`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({binary_path: binaryPath})
-    });
-    const data = await res.json();
-    
-    if (data.valid) {
-        document.getElementById('statusLabel').innerHTML = `Working: <span style="color:#fff;" title="${binaryPath}">${binaryPath}</span> [${data.arch}]`;
-        renderHistoryUI(data.history);
-        document.getElementById('opt-arch').value = data.arch;
-        if (document.getElementById('asm-arch')) document.getElementById('asm-arch').value = data.arch;
+    try {
+        const res = await fetch(`${API}/load`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({binary_path: p})
+        });
+        const data = await res.json();
         
-        currentFileHash = data.file_hash || '';
-        
-        // Reset and apply backend cache
-        for (let key in aceSessions) delete aceSessions[key];
-        for (let key in userEditedDecompCache) delete userEditedDecompCache[key];
-        for (let k in originalDecompCache) delete originalDecompCache[k];
-        for (let k in modalAsmCache) delete modalAsmCache[k];
-        
-        if (data.decomp_cache) {
-            Object.assign(originalDecompCache, data.decomp_cache);
-            if (originalDecompCache['BATCH_COMPLETE']) {
-                btnAll.innerText = "✓ Decompiled Already";
-            }
+        if (data.error) {
+            document.getElementById('statusLabel').innerText = "Error loading binary";
+            alert(data.error);
+            return;
         }
-
-        saveCurrentProjectState();
+        
+        binaryPath = data.binary_path || p;
+        currentFileHash = data.file_hash || '';
+        document.getElementById('statusLabel').innerText = "Loaded: " + binaryPath;
+        
+        // POPULATE CACHE IMMEDIATELY FROM BACKEND
+        if (data.decomp_cache) {
+            Object.keys(data.decomp_cache).forEach(addr => {
+                const cleanId = getCleanId(addr);
+                if (cleanId !== 'BATCH_COMPLETE' && cleanId !== 'COMBINED') {
+                    originalDecompCache[binaryPath + '|||' + cleanId] = data.decomp_cache[addr];
+                }
+            });
+        }
+        
+        // AUTO-DETECT ARCHITECTURE using readelf header
+        try {
+            const archRes = await fetch(`${API}/generic`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, cmd: 'readelf-h'}) });
+            const archData = await archRes.json();
+            const headerOut = archData.output || '';
+            const archSelect = document.getElementById('opt-arch');
+            if (archSelect) {
+                if (headerOut.includes('AArch64') || headerOut.includes('aarch64')) archSelect.value = 'aarch64';
+                else if (headerOut.includes('ARM') || headerOut.includes('arm')) archSelect.value = 'arm';
+                else archSelect.value = 'x86-64';
+            }
+        } catch(e) { console.warn("Auto-detect arch failed", e); }
+        
+        // Loads symbols safely via functions.js
+        if (typeof loadFunctions === 'function') loadFunctions(binaryPath);
+        
+        if (typeof loadPatchHistory === 'function') {
+            try { loadPatchHistory(); } catch(e) {}
+        }
+        
+        // PROJECT WORKSPACE TABS LOGIC (Brand new binary starts fresh with converterState: null)
+        if (!openProjects[binaryPath]) {
+            openProjects[binaryPath] = {
+                path: binaryPath,
+                name: binaryPath.split('/').pop(),
+                scrolls: {},
+                activeTab: 'disasm',
+                converterState: null
+            };
+        }
         renderProjectTabs();
-
-        await loadFunctions();
-        await loadDisasm(true);
-    } else {
-        alert("Invalid binary: " + data.message);
+        
+        // RESTORE CONVERTER / CALCULATORS STATE (Clean 1 default for new binary, or exact saved state for existing)
+        if (typeof importConverterState === 'function') {
+            importConverterState(openProjects[binaryPath].converterState);
+        }
+        
+        // RESTORE EXACT TAB PER PROJECT WORKSPACE
+        const targetTab = (openProjects[binaryPath] && openProjects[binaryPath].activeTab) || 'disasm';
+        updateTabs(targetTab);
+        
+        if (targetTab === 'disasm') {
+            loadDisasm();
+        } else if (targetTab === 'hexdump') {
+            runCmd('hexdump', 'hexdump');
+        } else if (targetTab === 'strings') {
+            runCmd('strings', 'strings');
+        } else if (targetTab === 'header') {
+            runCmd('readelf-h', 'header');
+        } else if (targetTab === 'sections') {
+            runCmd('readelf-S', 'sections');
+        } else if (targetTab === 'relocs') {
+            runCmd('objdump-R', 'relocs');
+        } else if (targetTab === 'foundStrings') {
+            loadFoundStrings();
+        } else if (targetTab === 'conv') {
+            showConvUI();
+        } else if (targetTab === 'patch') {
+            showPatchUI();
+        } else if (targetTab === 'asm') {
+            showAsmUI();
+        } else if (targetTab === 'ide') {
+            showIdeUI();
+        } else if (targetTab === 'ascii') {
+            showAsciiUI();
+        } else {
+            loadDisasm();
+        }
+        
+    } catch (err) {
+        document.getElementById('statusLabel').innerText = "Network Error";
+        console.error(err);
     }
 }
 
-fetch(`${API}/history`).then(r => r.json()).then(data => {
-    renderHistoryUI(data.history);
+// Renders the Multi-Binary File Tabs at the top of the screen
+function renderProjectTabs() {
+    const bar = document.getElementById('projectTabsBar');
+    if (!bar) return;
+    bar.innerHTML = '';
     
-    const input = document.getElementById('binaryPath');
-    if (!input.value && data.history && data.history.length > 0) {
-        input.value = data.history[0];
+    Object.values(openProjects).forEach(proj => {
+        const isActive = (proj.path === binaryPath);
+        const tab = document.createElement('div');
+        tab.className = 'project-tab' + (isActive ? ' active' : '');
+        
+        tab.innerHTML = `
+            <span class="project-tab-name" title="${proj.path}">${proj.name}</span>
+            <span class="project-tab-close" onclick="closeProject(event, '${proj.path}')">×</span>
+        `;
+        
+        tab.onclick = () => {
+            if (!isActive) {
+                // 1. SAVE ACTIVE PROJECT BEFORE SWAPPING
+                saveCurrentProjectState();
+
+                // 2. Deactivate previous scroller so its DOM teardown won't leak events
+                if (mainScroller) {
+                    mainScroller.isReady = false;
+                }
+
+                // 3. Switch project to target
+                document.getElementById('binaryPath').value = proj.path;
+                loadBinary();
+            }
+        };
+        bar.appendChild(tab);
+    });
+}
+
+function closeProject(e, path) {
+    e.stopPropagation();
+    delete openProjects[path];
+    if (binaryPath === path) {
+        const remaining = Object.keys(openProjects);
+        if (remaining.length > 0) {
+            document.getElementById('binaryPath').value = remaining[0];
+            loadBinary();
+        } else {
+            if (typeof resetWorkspace === 'function') resetWorkspace();
+        }
+    } else {
+        renderProjectTabs();
     }
-    
-    if (input.value) {
-        loadBinary();
-    }
-});
+}
+
+function handleFilePicked(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // SAVE ACTIVE PROJECT BEFORE FILE UPLOAD
+    saveCurrentProjectState();
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch(`${API}/upload`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+        } else {
+            document.getElementById('binaryPath').value = data.path;
+            loadBinary();
+        }
+        event.target.value = '';
+    })
+    .catch(err => {
+        alert("Upload failed: " + err);
+        event.target.value = '';
+    });
+}
