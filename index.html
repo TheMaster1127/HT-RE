@@ -88,6 +88,7 @@
                 <button class="tab-btn" onclick="runCmd('objdump-R', 'relocs')">Relocs</button>
                 <button class="tab-btn" onclick="runCmd('strings', 'strings')">Strings</button>
                 <button class="tab-btn" onclick="loadFoundStrings()">Found Strings</button>
+                <button class="tab-btn dbg-btn" onclick="showDebugUI()">Run / Trace / Hook</button>
                 <button class="tab-btn patch-btn" onclick="showPatchUI()">Patch/Find (binpatch)</button>
                 <button class="tab-btn asm-btn" onclick="showAsmUI()">Dis/Assembler</button>
                 <button class="tab-btn ide-btn" onclick="showIdeUI()">C/C++ IDE</button>
@@ -123,6 +124,75 @@
             <div id="funcContextMenu" class="context-menu"></div>
             <div id="windowHeaderContextMenu" class="context-menu"></div>
             <div id="tabContextMenu" class="context-menu"></div>
+
+            <!-- Debug / Trace / Hook Panel -->
+            <div id="debugPanel" class="bp-container">
+                <div class="bp-header">
+                    <h2 style="color: #ff00ff; margin: 0;">Dynamic Trace & Emulation</h2>
+                    <span style="color: #888; font-size: 0.9em;">Interactive GDB/MI, QEMU Execution, Strace timeline, and Firmware Scanning</span>
+                </div>
+                <div class="bp-tabs">
+                    <div class="bp-tab active" onclick="switchDebugTab('debugger')">Debugger (GDB + QEMU)</div>
+                    <div class="bp-tab" onclick="switchDebugTab('strace')">Syscalls & Network (strace)</div>
+                    <div class="bp-tab" onclick="switchDebugTab('binwalk')">Firmware & Sigs (binwalk)</div>
+                </div>
+                
+                <div id="dbg-debugger" class="bp-panel active" style="max-width: 100%;">
+                    <div style="display:flex; gap: 15px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 400px; display: flex; flex-direction: column;">
+                            <div class="bp-group" style="background:#111; padding: 10px; border: 1px solid #333;">
+                                <label class="inline-check"><input type="checkbox" id="dbg-use-qemu" checked> Emulate using QEMU User-Mode (Defaults to True)</label>
+                                <div style="display: flex; gap: 5px; margin-top: 10px;">
+                                    <button class="bp-run-btn" style="margin:0; background:#0f0;" onclick="startDebugger()">▶ Start</button>
+                                    <button class="bp-run-btn" style="margin:0; background:#ffeb73;" onclick="sendGdbCmd('-exec-continue')">Continue</button>
+                                    <button class="bp-run-btn" style="margin:0; background:#55aaff;" onclick="sendGdbCmd('-exec-step-instruction')">Step In</button>
+                                    <button class="bp-run-btn" style="margin:0; background:#55aaff;" onclick="sendGdbCmd('-exec-next-instruction')">Step Over</button>
+                                    <button class="bp-run-btn" style="margin:0; background:#ff3333;" onclick="stopDebugger()">■ Stop</button>
+                                </div>
+                            </div>
+                            <div class="bp-group">
+                                <label>GDB MI Console (Log & Raw Input)</label>
+                                <div id="dbg-console" class="bp-output" style="height: 300px; margin-top: 5px;"></div>
+                                <input type="text" id="dbg-cmd-input" placeholder="e.g. -data-list-register-values x" style="width:100%; margin-top: 5px;" onkeydown="if(event.key==='Enter') submitGdbCmd()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="dbg-strace" class="bp-panel" style="max-width: 100%;">
+                    <div class="bp-group">
+                        <button class="bp-run-btn" style="background: #ff00ff; color: #fff; width: auto;" onclick="runStrace()">Run strace Timeline (10s timeout)</button>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex: 1;">
+                            <label style="color: var(--primary);">Full Syscall Timeline</label>
+                            <div id="dbg-strace-out" class="bp-output" style="height: 400px;"></div>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="color: #00ffcc;">Intercepted Network / Sockets</label>
+                            <div id="dbg-strace-net" class="bp-output" style="height: 400px; color: #00ffcc;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="dbg-binwalk" class="bp-panel" style="max-width: 100%;">
+                    <div class="bp-group">
+                        <label class="inline-check"><input type="checkbox" id="dbg-bw-extract"> Extract Files (-e)</label>
+                        <label class="inline-check"><input type="checkbox" id="dbg-bw-entropy"> Calculate Entropy (-E)</label>
+                        <button class="bp-run-btn" style="background: #ff00ff; color: #fff; width: auto; margin-left: 15px;" onclick="runBinwalk()">Scan Firmware</button>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex: 2;">
+                            <label style="color: var(--primary);">Binwalk Output</label>
+                            <div id="dbg-bw-out" class="bp-output" style="height: 400px;"></div>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="color: #ffeb73;">Extraction Tree</label>
+                            <div id="dbg-bw-tree" class="bp-output" style="height: 400px; color: #ffeb73;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <!-- Patch Panel -->
             <div id="patchPanel" class="bp-container">
@@ -557,6 +627,7 @@
     <script src="static/js/modal.js"></script>
     <script src="static/js/strings.js"></script>
     <script src="static/js/export.js"></script>
+    <script src="static/js/debug.js"></script>
     <script src="static/js/patch.js"></script>
     <script src="static/js/converter.js"></script>
     <script src="static/js/binary_loader.js"></script>

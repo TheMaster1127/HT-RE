@@ -4,10 +4,10 @@ function saveCurrentProjectState() {
     if (!openProjects[binaryPath]) {
         openProjects[binaryPath] = { path: binaryPath, name: binaryPath.split('/').pop() };
     }
-    
+
     // 1. Active Tab
     openProjects[binaryPath].activeTab = currentTab;
-    
+
     // 2. Active Tab Scroll
     if (mainScroller && mainScroller.container && mainScroller.isReady && (mainScroller.ownerBinary === binaryPath)) {
         const pos = mainScroller.container.scrollTop;
@@ -16,20 +16,26 @@ function saveCurrentProjectState() {
         if (!openProjects[binaryPath].scrolls) openProjects[binaryPath].scrolls = {};
         openProjects[binaryPath].scrolls[currentTab] = pos;
     }
-    
+
     // 3. Converter & All Spawned Calculators
     if (typeof exportConverterState === 'function') {
         openProjects[binaryPath].converterState = exportConverterState();
     }
+
+    // 4. Trace & Hook UI tab state
+    openProjects[binaryPath].debugState = {
+        activeTab: document.querySelector('.bp-tab.active')?.innerText.includes('Debugger') ? 'debugger' : 
+                  (document.querySelector('.bp-tab.active')?.innerText.includes('Syscalls') ? 'strace' : 'binwalk')
+    };
 }
 
 async function loadBinary() {
     const p = document.getElementById('binaryPath').value;
     if (!p) return;
-    
+
     // 1. SAVE THE ACTIVE PROJECT'S COMPLETE STATE BEFORE LOADING A NEW ONE
     saveCurrentProjectState();
-    
+
     // 2. Deactivate previous scroller so its DOM teardown won't leak events
     if (mainScroller) {
         mainScroller.isReady = false;
@@ -51,17 +57,17 @@ async function loadBinary() {
             body: JSON.stringify({binary_path: p})
         });
         const data = await res.json();
-        
+
         if (data.error) {
             document.getElementById('statusLabel').innerText = "Error loading binary";
             alert(data.error);
             return;
         }
-        
+
         binaryPath = data.binary_path || p;
         currentFileHash = data.file_hash || '';
         document.getElementById('statusLabel').innerText = "Loaded: " + binaryPath;
-        
+
         // POPULATE CACHE IMMEDIATELY FROM BACKEND
         if (data.decomp_cache) {
             Object.keys(data.decomp_cache).forEach(addr => {
@@ -71,7 +77,7 @@ async function loadBinary() {
                 }
             });
         }
-        
+
         // AUTO-DETECT ARCHITECTURE using readelf header
         try {
             const archRes = await fetch(`${API}/generic`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, cmd: 'readelf-h'}) });
@@ -84,14 +90,14 @@ async function loadBinary() {
                 else archSelect.value = 'x86-64';
             }
         } catch(e) { console.warn("Auto-detect arch failed", e); }
-        
+
         // Loads symbols safely via functions.js
         if (typeof loadFunctions === 'function') loadFunctions(binaryPath);
-        
+
         if (typeof loadPatchHistory === 'function') {
             try { loadPatchHistory(); } catch(e) {}
         }
-        
+
         // PROJECT WORKSPACE TABS LOGIC (Brand new binary starts fresh with converterState: null)
         if (!openProjects[binaryPath]) {
             openProjects[binaryPath] = {
@@ -99,16 +105,17 @@ async function loadBinary() {
                 name: binaryPath.split('/').pop(),
                 scrolls: {},
                 activeTab: 'disasm',
-                converterState: null
+                converterState: null,
+                debugState: { activeTab: 'debugger' }
             };
         }
         renderProjectTabs();
-        
+
         // RESTORE CONVERTER / CALCULATORS STATE
         if (typeof importConverterState === 'function') {
             importConverterState(openProjects[binaryPath].converterState);
         }
-        
+
         // ISOLATE & RESTORE FLOATING WINDOWS FOR THIS BINARY
         if (typeof updateProjectWindowsVisibility === 'function') {
             updateProjectWindowsVisibility();
@@ -117,7 +124,7 @@ async function loadBinary() {
         // RESTORE EXACT TAB PER PROJECT WORKSPACE
         const targetTab = (openProjects[binaryPath] && openProjects[binaryPath].activeTab) || 'disasm';
         updateTabs(targetTab);
-        
+
         if (targetTab === 'disasm') {
             loadDisasm();
         } else if (targetTab === 'hexdump') {
@@ -136,6 +143,8 @@ async function loadBinary() {
             showConvUI();
         } else if (targetTab === 'patch') {
             showPatchUI();
+        } else if (targetTab === 'debug') {
+            if (typeof showDebugUI === 'function') showDebugUI();
         } else if (targetTab === 'asm') {
             showAsmUI();
         } else if (targetTab === 'ide') {
@@ -145,7 +154,7 @@ async function loadBinary() {
         } else {
             loadDisasm();
         }
-        
+
     } catch (err) {
         document.getElementById('statusLabel').innerText = "Network Error";
         console.error(err);
@@ -157,17 +166,17 @@ function renderProjectTabs() {
     const bar = document.getElementById('projectTabsBar');
     if (!bar) return;
     bar.innerHTML = '';
-    
+
     Object.values(openProjects).forEach(proj => {
         const isActive = (proj.path === binaryPath);
         const tab = document.createElement('div');
         tab.className = 'project-tab' + (isActive ? ' active' : '');
-        
+
         tab.innerHTML = `
             <span class="project-tab-name" title="${proj.path}">${proj.name}</span>
             <span class="project-tab-close" onclick="closeProject(event, '${proj.path}')">×</span>
         `;
-        
+
         tab.onclick = () => {
             if (!isActive) {
                 // 1. SAVE ACTIVE PROJECT BEFORE SWAPPING
@@ -190,7 +199,7 @@ function renderProjectTabs() {
 function closeProject(e, path) {
     e.stopPropagation();
     delete openProjects[path];
-    
+
     // Clean up and close all floating windows belonging to this specific project
     Object.keys(openWindows).forEach(winId => {
         if (openWindows[winId].binary === path) {

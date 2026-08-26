@@ -66,6 +66,9 @@ button:disabled { color: #555; border-color: #333; cursor: not-allowed; }
 .toolbar { padding: 5px 10px; background: #151515; border-bottom: 1px solid var(--border); display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .sub-toolbar { padding: 5px 10px; background: #111; border-bottom: 1px solid var(--border); display: none; align-items: center; gap: 10px; font-size: 0.85em; }
 
+.tab-btn.dbg-btn { color: #ff00ff; border-color: #ff00ff; }
+.tab-btn.dbg-btn.active { color: #fff; background: #ff00ff; border-color: #ff00ff; }
+
 .tab-btn.patch-btn { color: var(--primary); border-color: var(--primary); }
 .tab-btn.patch-btn.active { color: #000; background: var(--primary); border-color: var(--primary); }
 

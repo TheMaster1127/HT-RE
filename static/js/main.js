@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function onScrollerScroll(scrollTop, ownerBinary, mode) {
     const targetBin = ownerBinary || binaryPath;
     const targetTab = mode === 'disasm' ? 'disasm' : (mode === 'hex' ? 'hexdump' : (mode === 'header' ? 'header' : (mode === 'sections' ? 'sections' : currentTab)));
-    
+
     if (targetBin && targetTab) {
         const key = targetBin + '|||' + targetTab;
         tabScrollPositions[key] = scrollTop;
@@ -26,9 +26,9 @@ function saveCurrentTabScroll(optBinary, optTab) {
     const targetBin = optBinary || (mainScroller && mainScroller.ownerBinary) || binaryPath;
     const targetTab = optTab || currentTab;
     if (!targetTab || !targetBin) return;
-    
+
     const cacheKey = targetBin + '|||' + targetTab;
-    
+
     if (mainScroller && mainScroller.container && mainScroller.isReady && (mainScroller.ownerBinary === targetBin)) {
         const pos = mainScroller.container.scrollTop;
         tabScrollPositions[cacheKey] = pos;
@@ -63,7 +63,7 @@ async function runCmd(cmd, tabName, forceReload = false) {
     document.getElementById('output').innerHTML = '<div style="padding:10px;">Loading...</div>';
     const res = await fetch(`${API}/generic`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({binary_path: binaryPath, cmd: cmd}) });
     const data = await res.json();
-    
+
     const outputText = data.output || '';
     tabDataCache[cacheKey] = { output: outputText, mode: mode };
 
@@ -79,30 +79,31 @@ function updateTabs(activeTab) {
         }
         saveCurrentTabScroll();
     }
-    
+
     currentTab = activeTab;
-    
+
     // Save active tab per project continuously
     if (binaryPath && openProjects[binaryPath]) {
         openProjects[binaryPath].activeTab = activeTab;
     }
-    
+
     const btnBack = document.getElementById('btnBack');
     if (btnBack) {
         btnBack.disabled = (navHistory.length === 0);
     }
 
-    document.getElementById('output').style.display = (activeTab === 'patch' || activeTab === 'asm' || activeTab === 'conv' || activeTab === 'ascii' || activeTab === 'ide') ? 'none' : 'block';
+    document.getElementById('output').style.display = (activeTab === 'debug' || activeTab === 'patch' || activeTab === 'asm' || activeTab === 'conv' || activeTab === 'ascii' || activeTab === 'ide') ? 'none' : 'block';
+    document.getElementById('debugPanel').style.display = activeTab === 'debug' ? 'flex' : 'none';
     document.getElementById('patchPanel').style.display = activeTab === 'patch' ? 'flex' : 'none';
     document.getElementById('asmPanel').style.display = activeTab === 'asm' ? 'flex' : 'none';
     document.getElementById('convPanel').style.display = activeTab === 'conv' ? 'flex' : 'none';
     document.getElementById('asciiPanel').style.display = activeTab === 'ascii' ? 'flex' : 'none';
     document.getElementById('idePanel').style.display = activeTab === 'ide' ? 'flex' : 'none';
     document.getElementById('findAllPanel').style.display = 'none';
-    
+
     document.getElementById('bar-jump').style.display = (activeTab === 'disasm' || activeTab === 'hexdump') ? 'flex' : 'none';
     document.getElementById('bar-search').style.display = (activeTab === 'strings' || activeTab === 'foundStrings' || activeTab === 'hexdump' || activeTab === 'header' || activeTab === 'sections' || activeTab === 'relocs') ? 'flex' : 'none';
-    
+
     if (activeTab === 'disasm' || activeTab === 'hexdump') {
         document.getElementById('jumpInput').placeholder = activeTab === 'hexdump' ? "e.g. 0x112b" : "e.g. 0x4011cd";
     }
@@ -112,7 +113,7 @@ function updateTabs(activeTab) {
     }
 
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'patch': 7, 'asm': 8, 'ide': 9, 'conv': 10, 'ascii': 11 };
+    const btnMap = { 'header': 0, 'sections': 1, 'disasm': 2, 'hexdump': 3, 'relocs': 4, 'strings': 5, 'foundStrings': 6, 'debug': 7, 'patch': 8, 'asm': 9, 'ide': 10, 'conv': 11, 'ascii': 12 };
     if (activeTab in btnMap) document.querySelectorAll('.tab-btn')[btnMap[activeTab]].classList.add('active');
 }
 
@@ -120,7 +121,7 @@ function showIdeUI() { updateTabs('ide'); }
 
 function resetWorkspace() {
     if (!confirm("Are you sure you want to reset everything? This will clear all workspaces and safely default to nothingness.")) return;
-    
+
     if (typeof closeAllProjectWindows === 'function') closeAllProjectWindows();
     openProjects = {};
     binaryPath = '';
@@ -136,7 +137,7 @@ function resetWorkspace() {
     if (typeof resetConverterToDefault === 'function') resetConverterToDefault();
     if (typeof renderProjectTabs === 'function') renderProjectTabs();
     updateTabs('disasm');
-    
+
     if (typeof trackAction === 'function') trackAction("RESET_WORKSPACE");
 }
 
@@ -157,7 +158,7 @@ function executeFindAll() {
     const panel = document.getElementById('findAllPanel');
     const list = document.getElementById('findAllList');
     list.innerHTML = '';
-    
+
     if (results.length === 0) {
         list.innerHTML = `<div style="padding:10px; color:#888;">No results found.</div>`;
     } else {
@@ -201,7 +202,7 @@ async function toggleHistory() {
         menu.style.display = 'none';
         return;
     }
-    
+
     try {
         const res = await fetch(`${API}/history`);
         const data = await res.json();
@@ -261,7 +262,7 @@ document.addEventListener('contextmenu', e => {
         const hexValue = currentElement.dataset.value;
         if (!hexValue) return;
         const numValue = parseInt(hexValue, 16);
-        
+
         let ascii = '';
         if (numValue === 0) { ascii = '(null)'; }
         else {

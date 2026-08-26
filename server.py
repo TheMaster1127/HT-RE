@@ -9,6 +9,7 @@ from backend.ghidra_service import handle_decompile_single, handle_decompile_bat
 from backend.generic_service import handle_generic_cmd
 from backend.export_service import handle_export
 from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw, handle_compile, get_patch_history, restore_patch, track_action
+from backend.debug_service import handle_debug_start, handle_debug_cmd, handle_debug_stop, handle_debug_poll, handle_trace_run, handle_binwalk
 
 app = Flask(__name__, static_url_path='', static_folder=STATIC_FOLDER)
 
@@ -111,6 +112,31 @@ def api_restore_patch():
 @app.route('/api/track', methods=['POST'])
 def api_track():
     return jsonify(track_action(request.json))
+
+# --- DEBUG, TRACE & BINWALK ROUTES ---
+@app.route('/api/debug/start', methods=['POST'])
+def api_debug_start():
+    return jsonify(handle_debug_start(request.json))
+
+@app.route('/api/debug/cmd', methods=['POST'])
+def api_debug_cmd():
+    return jsonify(handle_debug_cmd(request.json))
+
+@app.route('/api/debug/stop', methods=['POST'])
+def api_debug_stop():
+    return jsonify(handle_debug_stop(request.json))
+
+@app.route('/api/debug/poll', methods=['POST'])
+def api_debug_poll():
+    return jsonify(handle_debug_poll(request.json))
+
+@app.route('/api/debug/trace', methods=['POST'])
+def api_debug_trace():
+    return jsonify(handle_trace_run(request.json))
+
+@app.route('/api/debug/binwalk', methods=['POST'])
+def api_debug_binwalk():
+    return jsonify(handle_binwalk(request.json))
 
 if __name__ == '__main__':
     print(f"🚀 Server running on http://localhost:{DEFAULT_PORT}")
