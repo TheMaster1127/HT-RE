@@ -12,16 +12,18 @@
 6. [Installing `binpatch` (Required Dependency)](#installing-binpatch-required-dependency)
 7. [Installation & Setup](#installation--setup)
 8. [Comprehensive Workflow & Usage Guide](#comprehensive-workflow--usage-guide)
-9. [Project Workspaces & Multi-Binary Tabs](#project-workspaces--multi-binary-tabs)
-10. [Floating Multi-Window Desktop (MWM)](#floating-multi-window-desktop-mwm)
-11. [Embedded Multi-File C/C++ & Assembly IDE](#embedded-multi-file-cc-assembly-ide)
-12. [Run / Trace / Hook (Debugger, Emulation & Syscalls)](#run--trace--hook-debugger-emulation--syscalls)
-13. [Firmware & Signature Scanner (`binwalk`)](#firmware--signature-scanner-binwalk)
-14. [RE Scientific Calculators & Converter Suite](#re-scientific-calculators--converter-suite)
-15. [Headless Ghidra & Combined Decompilation](#headless-ghidra--combined-decompilation)
-16. [Dis/Assembler & `binpatch` Interface](#disassembler--binpatch-interface)
-17. [Granular JSON Workspace Exporter](#granular-json-workspace-exporter)
-18. [License](#license)
+9. [Tutorial: Debugging PIE & Stripped Binaries](#tutorial-debugging-pie--stripped-binaries)
+10. [Project Workspaces & Multi-Binary Tabs](#project-workspaces--multi-binary-tabs)
+11. [Floating Multi-Window Desktop (MWM)](#floating-multi-window-desktop-mwm)
+12. [Embedded Multi-File C/C++ & Assembly IDE](#embedded-multi-file-cc--assembly-ide)
+13. [Run / Trace / Hook (Debugger, Emulation & Syscalls)](#run--trace--hook-debugger-emulation--syscalls)
+14. [Firmware & Signature Scanner (`binwalk`)](#firmware--signature-scanner-binwalk)
+15. [RE Scientific Calculators & Converter Suite](#re-scientific-calculators--converter-suite)
+16. [Headless Ghidra & Combined Decompilation](#headless-ghidra--combined-decompilation)
+17. [Dis/Assembler & `binpatch` Interface](#disassembler--binpatch-interface)
+18. [Granular JSON Workspace Exporter](#granular-json-workspace-exporter)
+19. [Workflow Exporting (AI / Peer Sharing)](#workflow-exporting-ai--peer-sharing)
+20. [License](#license)
 
 ---
 
@@ -38,7 +40,8 @@ Instead of juggling multiple terminal windows, heavyweight desktop GUI disassemb
 Traditional reverse engineering workflows often involve switching between terminals, disassemblers, decompilers, standalone calculators, and patch tools. `HT-RE` solves these workflow bottlenecks:
 
 - **Zero Frontend Build Pipeline:** 100% Vanilla JavaScript executing directly on the browser's V8 engine with sub-millisecond DOM manipulation and no Webpack, Babel, or Node.js runtime required.
-- **Dynamic Emulation & Live Inspection:** Debug and step through x86-64, ARM, and AArch64 binaries inside user-mode QEMU with real-time CPU register inspection and in-flight register value editing.
+- **Dynamic Emulation & Live Inspection:** Debug and step through x86-64, ARM, and AArch64 binaries inside user-mode QEMU with real-time CPU register inspection, memory extraction, and in-flight register value editing.
+- **Pseudo-Terminal (PTY) Output:** Solves the notorious C library block-buffering issue. You will see `printf` output instantly in the terminal without having to wait for the program to exit or flush.
 - **Live System Call & Socket Extraction:** Capture `write()`, `mmap()`, `execve()`, and socket communications (`connect`, `sendto`, `recvfrom`) in real time as the program executes.
 - **Dedicated Target Program I/O Terminal:** View program standard output (`stdout`) and standard error (`stderr`) isolated from debugger internal logs.
 - **Persistent SHA-256 Decompilation Caching:** Background Ghidra decompilation results are indexed permanently on disk by file hash (`.htre_cache/<sha256>.json`), eliminating redundant decompilation across sessions.
@@ -52,10 +55,11 @@ Traditional reverse engineering workflows often involve switching between termin
 
 - **Multi-Project Workspace Tabs:** Seamlessly switch between multiple open binaries while preserving independent scroll positions, active tab states, debugger breakpoints, and isolated calculator scratchpads.
 - **Run / Trace / Hook (Interactive Debugger & Tracing Engine):**
-  - Multi-architecture execution with user-mode QEMU (`qemu-x86_64`, `qemu-arm`, `qemu-aarch64`) or native host execution.
+  - Multi-architecture execution with user-mode QEMU (`qemu-x86_64`, `qemu-arm`, `qemu-aarch64`) or native host execution via secure PTY streams.
   - GDB/MI machine interface control: Start, Continue, Step In (single instruction), Step Over, and Stop.
-  - Breakpoint manager supporting raw virtual memory addresses (e.g. `0x401140`) and symbol names (e.g. `main`, `_start`).
+  - Breakpoint manager supporting raw virtual memory addresses (e.g. `0x401140`) and symbol name offsets (e.g. `*main+0x7c`).
   - Live CPU Registers grid: Displays all general-purpose and instruction pointer registers with on-the-fly value editing.
+  - Memory & Stack Inspector: Dump paginated hex blocks of live running memory and scroll up/down dynamically.
   - Dual-stream capture: Captures live system calls via QEMU `-strace` and program console output (`stdout`/`stderr`) in isolated terminals.
   - Universal font zooming (`A+` / `A-`) scaling all debug terminals and register cards.
 - **Firmware & Signature Scanner (`binwalk`):**
@@ -112,7 +116,7 @@ Traditional reverse engineering workflows often involve switching between termin
 |  | /api/load, /api/upload, /api/nm, /api/objdump-d, /api/function_code         |  |
 |  | /api/decompile, /api/decompile_all, /api/generic, /api/binpatch, /api/export|  |
 |  | /api/debug/start, /api/debug/cmd, /api/debug/poll, /api/debug/registers     |  |
-|  | /api/debug/set_reg, /api/debug/trace, /api/debug/binwalk                    |  |
+|  | /api/debug/read_memory, /api/debug/set_reg, /api/debug/trace, /api/debug/binwalk|  |
 |  +-----------------------------------------------------------------------------+  |
 |  | Toolchain Probing (x86-64 / ARM / AArch64) | SHA-256 Cache (.htre_cache/)   |  |
 +-------------------+---------------------------------------+-----------------------+
@@ -220,39 +224,86 @@ sudo chmod +x /usr/local/bin/binpatch
 
 ### 4. Run / Trace / Hook (Debugger, Emulation & Syscalls)
 - Switch to the **Run / Trace / Hook** tab for dynamic execution and debugging:
-  - **Breakpoints:** Add virtual memory addresses (e.g. `0x401140`) or symbols (e.g. `main`) to the breakpoint table. Click `✕` to delete breakpoints.
+  - **Breakpoints:** Add virtual memory addresses (e.g. `0x401140`) or symbol offsets (e.g. `*main+0x20`) to the breakpoint table. Click `✕` to delete breakpoints.
   - **Execution Controls:** Click **▶ Start** to launch the target suspended at its entry point inside QEMU. Use **⏭ Continue**, **⬇ Step In** (single instruction step), **⤵ Step Over**, or **⏹ Stop**.
   - **CPU Registers Grid:** View real-time CPU registers in Hex. Click any register row to load its value into the editor bar, type a new value, and click **Set** to mutate memory/registers mid-execution.
-  - **Live Program Output:** Observe printed console text in the **Program I/O (stdout / stderr)** terminal.
+  - **Memory & Stack Inspector:** Enter an address (`0x400000`), a register (`$sp`, `$pc`), or a symbol offset (`*main+0x10`) to extract raw memory. Use the `↑` and `↓` buttons to automatically scroll up and down through live memory pages.
+  - **Live Program Output:** Observe printed console text instantly via the PTY bridge in the **Program I/O (stdout / stderr)** terminal.
   - **System Call & Socket Hooks:** Live kernel system calls and network operations (`connect`, `send`, `recv`) appear in the tracing cards in real time.
-  - **Font Scaling:** Use `A+` / `A-` in the top bar to scale all terminals and register cards.
+  - **Font Scaling:** Use `A+` / `A-` in the top bar to scale all terminals, hex dumps, and register cards.
 
-### 5. Firmware & Signature Scanner (`binwalk`)
+---
+
+## Tutorial: Debugging PIE & Stripped Binaries
+
+By default, modern C compilers create **Position Independent Executables (PIE)**. This means the OS loads the binary into a random, massive virtual address space (e.g., `0x4000000000`) instead of the traditional `0x400000`.
+
+Because of this, **you cannot set breakpoints on low addresses like `0x11c5`** in GDB before the program runs—that memory doesn't exist yet!
+
+### Method 1: Using Symbols (Standard Binaries)
+If your binary has symbols (like `main`), the easiest way to break inside a loop is using **Relative Symbol Offsets**.
+1. Look at the disassembly and find your target (e.g., `11c5: cmp DWORD PTR [rbp-0x24], 0x4`).
+2. Find the start of the function (e.g., `1149 <main>:`).
+3. Use the RE Calculator to subtract: `11c5 - 1149 = 7C`.
+4. Add the breakpoint: **`*main+0x7c`**. GDB will automatically figure out where `main` is loaded and add `0x7C` to it.
+
+### Method 2: Dynamic Address Hooking (Stripped Binaries)
+If your binary is completely stripped (no `main`, no `_start`, 0 functions found in the sidebar), GDB has no symbols to anchor to.
+1. Click **▶ Start** to launch the binary in QEMU.
+2. Quickly click **⏹ Stop** to pause execution (or let it wait for an `input()`/`scanf()`).
+3. Look at the **CPU Registers** grid and find the Instruction Pointer (`$pc` or `$rip`). It will be sitting at the real mapped address in memory (e.g., `0x4000001050`).
+4. You can now use the RE calculator to calculate your offsets from `$pc`. Type **`*$pc+0x20`** into the breakpoint bar to set a trap right ahead of your current execution path.
+
+---
+
+## Workspace Tools
+
+### Firmware & Signature Scanner (`binwalk`)
 - In the **Run / Trace / Hook** tab, expand the **Firmware Signatures & Extraction (binwalk)** drawer.
 - Select **Extract Payloads (-e)** or **Plot Entropy (-E)** and click **Scan File** to inspect embedded components and navigate carved artifacts in an interactive directory tree.
 
-### 6. C/C++ & Assembly IDE
+### C/C++ & Assembly IDE
 - Switch to the **C/C++ IDE** tab to write and compile source files without leaving the browser.
 - Create multiple files (`.c`, `.cpp`, `.asm`, `.s`) with automatic language and compiler detection.
 - Select target compilers (GCC, G++, Clang, NASM, FASM, GAS, ARM, AArch64) or add custom toolchains.
 - Toggle compilation flags (`-static`, `-pie`, `-O0`..`-O3`, `-g`, `-z execstack`, etc.) and click **⚡ COMPILE**.
 - Compiled artifacts appear in the **Compiled Binaries** list and can be loaded directly into HT-RE with one click.
 
-### 7. Floating Multi-Window Desktop (MWM)
+### Floating Multi-Window Desktop (MWM)
 - Double-click any function in the left sidebar to open it in a floating window.
 - Drag and drop tabs to reorder them, or right-click a tab to "Pop into New Window".
 - Switch between **ASM** and **Decompile (C/C++)** inside the modal.
 - Edit decompiled source with live memory sync and right-click inline token conversions (Hex ↔ Dec ↔ ASCII).
 
-### 8. Patching & Dis/Assembler
+### Patching & Dis/Assembler
 - **Patch/Find (binpatch):**
   - *Write / Patch:* Overwrite bytes at offsets (`-o`) or virtual addresses (`-va`) with automatic `.bak` backups.
   - *Search / Find:* Execute exact (`-f`) or wildcard heuristic (`-fh`) byte scans.
   - *Patch History:* View, restore, or delete individual backup files (`🗑`).
 - **Dis/Assembler:** Convert raw assembly instructions to machine hex bytes and vice-versa for x86-64, ARM, and AArch64.
 
-### 9. Workspace Export
+### Granular Workspace Export
 - Click **Export JSON** to selectively include ELF headers, section tables, found strings, raw strings, bounded hex dumps, custom `binpatch` executions, and per-function ASM or decompiled C/C++ source into an offline JSON report.
+
+---
+
+## Workflow Exporting (AI / Peer Sharing)
+
+HT-RE includes an event-tracking mechanism designed to log your exact reverse engineering process. Every time you switch tabs, execute a search, step through code, edit a register, or request a decompilation, a log is saved.
+
+### Why does this exist?
+This is **not** telemetric spyware. The logs never leave your machine automatically. The purpose of this feature is to allow you to **export your workflow** by clicking the yellow **🕵 Export Tracking** button in the top bar.
+
+You can feed the resulting `json` file into an AI Language Model (like ChatGPT, Claude, or DeepSeek) and say:
+> *"Here is the workflow I just used to analyze this malware. Based on the functions I clicked, the hex values I converted, and the breakpoints I hit, what did I miss?"*
+
+You can also send the file to colleagues to show them exactly how you arrived at a specific vulnerability or patch.
+
+### Disabling the Tracker
+If you do not want your browser session to record your UI interactions in memory, you can permanently disable it by opening `static/js/state.js` and changing line 24:
+```javascript
+const invasive = false; // Change from true to false
+```
 
 ---
 

@@ -162,7 +162,7 @@
                 <!-- MAIN DEBUG LAYOUT GRID -->
                 <div class="dbg-workspace-grid">
                     
-                    <!-- LEFT COLUMN: Registers & Breakpoints -->
+                    <!-- LEFT COLUMN: Registers, Breakpoints, & Memory Inspector -->
                     <div class="dbg-col dbg-sidebar-col">
                         <!-- Breakpoint Box -->
                         <div class="dbg-card">
@@ -170,7 +170,7 @@
                                 <span>🛑 Breakpoints</span>
                             </div>
                             <div style="display:flex; gap: 4px; padding: 6px; background: #111; border-bottom: 1px solid #222;">
-                                <input type="text" id="dbg-bp-input" placeholder="e.g. 0x401140 or main" style="flex:1; height: 26px;" onkeydown="if(event.key==='Enter') addBreakpoint()">
+                                <input type="text" id="dbg-bp-input" placeholder="e.g. *main+0x7c or 0x401140" style="flex:1; height: 26px;" title="Tip: If the binary is PIE, use relative offsets like *main+0x7c instead of low numbers like 0x11c5!" onkeydown="if(event.key==='Enter') addBreakpoint()">
                                 <button onclick="addBreakpoint()" style="height: 26px; padding: 0 8px; background: #ff4444; color: #fff; border:none;">+ Add</button>
                             </div>
                             <div id="dbg-bp-list" class="dbg-bp-list">
@@ -195,6 +195,23 @@
                             <div id="dbg-reg-grid" class="dbg-reg-grid">
                                 <div style="color:#666; font-style:italic; padding:10px;">Debugger not running.</div>
                             </div>
+                        </div>
+
+                        <!-- Memory & Stack Inspector Box -->
+                        <div class="dbg-card" style="flex: 1; min-height: 250px; margin-top: 10px;">
+                            <div class="dbg-card-header">
+                                <span>🔍 Memory & Stack Inspector</span>
+                                <button onclick="document.getElementById('dbg-mem-out').innerHTML='No memory read yet.';" style="padding: 1px 5px; font-size: 0.75em; height: 20px; background: #222; color: #ffeb73; border: 1px solid #444;">Clear</button>
+                            </div>
+                            <div style="display:flex; gap: 4px; padding: 6px; background: #111; border-bottom: 1px solid #222; align-items:center;">
+                                <input type="text" id="dbg-mem-addr" placeholder="Addr / Reg (*main, $sp)" style="width: 140px; height: 26px;" title="Can be $sp, $pc, main, *main+0x10, or 0x400000">
+                                <input type="text" id="dbg-mem-count" placeholder="Bytes" value="64" style="width: 60px; height: 26px;">
+                                <button onclick="readMemory()" style="height: 26px; padding: 0 8px; background: #55aaff; color: #000; border:none; font-weight:bold;">Read</button>
+                                <button onclick="readStack()" style="height: 26px; padding: 0 8px; background: #ff9900; color: #000; border:none; font-weight:bold;">Stack</button>
+                                <button onclick="shiftMemory(-1)" style="height: 26px; padding: 0 8px; background: #333; color: #fff; border:none;" title="Previous Block">↑</button>
+                                <button onclick="shiftMemory(1)" style="height: 26px; padding: 0 8px; background: #333; color: #fff; border:none;" title="Next Block">↓</button>
+                            </div>
+                            <div id="dbg-mem-out" class="dbg-terminal" style="min-height: 150px; overflow: auto; word-break: normal;">No memory read yet.</div>
                         </div>
                     </div>
 

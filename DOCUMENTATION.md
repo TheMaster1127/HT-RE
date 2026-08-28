@@ -9,7 +9,7 @@
 3. [Multi-Project State Management & Workspaces (`state.js`, `binary_loader.js`)](#3-multi-project-state-management--workspaces-statejs-binary_loaderjs)
 4. [Backend REST API Pipeline (`server.py`)](#4-backend-rest-api-pipeline-serverpy)
 5. [GNU Binutils & Toolchain Probing Engine (`disasm_service.py`, `utils.py`)](#5-gnu-binutils--toolchain-probing-engine-disasm_servicepy-utilspy)
-6. [Dynamic Emulation, GDB/MI & Tracing Subsystem (`debug_service.py`, `debug.js`)](#6-dynamic-emulation-gdbmi--tracing-subsystem-debug_servicepy-debugjs)
+6. [Dynamic Emulation, GDB/MI, PTY & Tracing Subsystem (`debug_service.py`, `debug.js`)](#6-dynamic-emulation-gdbmi-pty--tracing-subsystem-debug_servicepy-debugjs)
 7. [Firmware & Signature Scanner Subsystem (`debug_service.py`, `debug.js`)](#7-firmware--signature-scanner-subsystem-debug_servicepy-debugjs)
 8. [Ghidra Headless Bridge & AST Stitching (`ghidra_service.py`, `Decompile*.java`)](#8-ghidra-headless-bridge--ast-stitching-ghidra_servicepy-decompilejava)
 9. [Persistent SHA-256 Caching Architecture](#9-persistent-sha-256-caching-architecture)
@@ -22,7 +22,7 @@
 16. [Multi-Encoding Strings & Found Strings Engine (`strings.js`, `converter.js`)](#16-multi-encoding-strings--found-strings-engine-stringsjs-converterjs)
 17. [Dis/Assembler Tool & `binpatch` Integration (`patch.js`, `patch_service.py`)](#17-disassembler-tool--binpatch-integration-patchjs-patch_servicepy)
 18. [Granular JSON Workspace Exporter (`export.js`, `export_service.py`)](#18-granular-json-workspace-exporter-exportjs-export_servicepy)
-19. [Invasive User Action Tracking Subsystem (`state.js`, `server.py`)](#19-invasive-user-action-tracking-subsystem-statejs-serverpy)
+19. [Workflow Activity Tracking & Export Subsystem (`state.js`, `server.py`)](#19-workflow-activity-tracking--export-subsystem-statejs-serverpy)
 
 ---
 
@@ -48,7 +48,7 @@ HT-RE is built on a **Decoupled Asynchronous Client-Server Architecture**:
 | - Dynamic GNU Toolchain detection (x86_64, ARM, AArch64)                           |
 | - Subprocess orchestrator (objdump, nm, readelf, xxd, strings, as, objcopy)         |
 | - Multi-Process Emulation Orchestrator (QEMU User-Mode + GDB/MI Daemon Threads)    |
-| - Non-blocking FIFO Queue Pipes for stdout, stderr (-strace), and GDB MI channels  |
+| - Non-blocking FIFO Queue Pipes for PTY stdout, stderr (-strace), and MI channels  |
 | - SHA-256 persistent disk cache (.htre_cache/<hash>.json)                          |
 | - Headless Ghidra JVM bridge (analyzeHeadless + Java scripts)                       |
 +------------------------------------------------------------------------------------+
@@ -69,7 +69,7 @@ HT-RE/
 ├── DecompileHeadless.java      # Ghidra script for single function extraction & PIE base correction
 ├── DecompileAll.java           # Ghidra script for whole-binary batch extraction across all symbols
 ├── history.json                # Local storage for recently loaded binary paths
-├── tracking.json               # Invasive user action logs (clickstream & feature metrics)
+├── tracking.json               # Workflow activity log (clickstream & feature metrics)
 ├── index.html                  # Core single-page HTML layout and top docking bar
 ├── LICENCE                     # GNU General Public License v3.0
 ├── README.md                   # User documentation and workflow guide
@@ -77,7 +77,7 @@ HT-RE/
 ├── backend/                    # Python Backend Modules
 │   ├── __init__.py             # Package marker
 │   ├── config.py               # Constants (Port 8000, history limits, static folder paths)
-│   ├── debug_service.py        # GDB/MI, QEMU user-mode runner, register parser, strace & binwalk
+│   ├── debug_service.py        # PTY hooks, GDB/MI, QEMU runner, register/mem parser, strace & binwalk
 │   ├── disasm_service.py       # objdump wrappers, symbol parsers, string resolution engine
 │   ├── export_service.py       # Granular JSON workspace exporter engine
 │   ├── generic_service.py      # readelf, stat, file, and ldd inspection wrappers
@@ -99,7 +99,7 @@ HT-RE/
         ├── modal.js            # Multi-window manager, draggable tabs, taskbar, and Ace editor
         ├── strings.js          # Cross-referencing `strings` with `objdump` rip-relative targets
         ├── export.js           # Selective JSON workspace export dialog and blob generator
-        ├── debug.js            # Interactive GDB/MI, register mutator, Program I/O, strace & binwalk
+        ├── debug.js            # Interactive GDB/MI, register mutator, PTY Program I/O, strace & binwalk
         ├── patch.js            # Binpatch GUI bindings, raw GNU assembler/disassembler, and IDE
         ├── converter.js        # Data type converters, Float16/32/64, and RE calculators
         ├── binary_loader.js    # Binary loading, file picker uploads, and project switching
@@ -175,11 +175,12 @@ All API routes receive and return strict JSON payloads:
 | `/api/assemble` | `POST` | `handle_assemble` | Assembles mnemonic text to raw machine code bytes using GNU `as` and `objcopy`. |
 | `/api/disassemble_raw` | `POST` | `handle_disassemble_raw` | Disassembles arbitrary hexadecimal instruction bytes into assembly mnemonics. |
 | `/api/compile` | `POST` | `handle_compile` | Compiles source files (`.c`, `.cpp`, `.asm`) with user-selected toolchains and flags into executable ELF binaries. |
-| `/api/debug/start` | `POST` | `handle_debug_start` | Spawns QEMU user-mode listening on a dynamic port and attaches GDB/MI. |
+| `/api/debug/start` | `POST` | `handle_debug_start` | Spawns QEMU user-mode listening on a dynamic port and attaches GDB/MI. Connects stdout to a PTY. |
 | `/api/debug/cmd` | `POST` | `handle_debug_cmd` | Dispatches GDB/MI or console commands to the active debug session pipe. |
-| `/api/debug/poll` | `POST` | `handle_debug_poll` | Returns queued GDB output, target stdout, QEMU strace lines, and register maps. |
+| `/api/debug/poll` | `POST` | `handle_debug_poll` | Returns queued GDB output, target PTY stdout, QEMU strace lines, memory reads, and register maps. |
 | `/api/debug/registers` | `POST` | `handle_debug_registers` | Queries CPU registers synchronously and returns structured dictionary. |
 | `/api/debug/set_reg` | `POST` | `handle_debug_set_reg` | Mutates a specific CPU register (`set $reg = val`) mid-execution. |
+| `/api/debug/read_memory` | `POST` | `handle_debug_read_memory` | Requests bounded memory regions via `-data-read-memory-bytes`. |
 | `/api/debug/stop` | `POST` | `handle_debug_stop` | Terminates active GDB and QEMU subprocesses. |
 | `/api/debug/trace` | `POST` | `handle_trace_run` | Executes standalone `strace` or `qemu -strace` with network socket parsing. |
 | `/api/debug/binwalk` | `POST` | `handle_binwalk` | Runs `binwalk` for signatures, extraction (`-e`), or entropy (`-E`). |
@@ -220,21 +221,21 @@ Addresses are cross-referenced with `strings -a -t x` output. When a match is fo
 
 ---
 
-## 6. Dynamic Emulation, GDB/MI & Tracing Subsystem (`debug_service.py`, `debug.js`)
+## 6. Dynamic Emulation, GDB/MI, PTY & Tracing Subsystem (`debug_service.py`, `debug.js`)
 
 HT-RE features a complete, decoupled interactive execution and debugging suite:
 
-### 1. Dual-Stream QEMU & GDB/MI Pipe Architecture
+### 1. Dual-Stream PTY & GDB/MI Pipe Architecture
 ```text
 +------------------------------------------------------------------------------------+
 |                         BACKEND DEBUG SESSION RUNNER                               |
 |                                                                                    |
 |  [ Target Binary ]                                                                 |
 |         ^                                                                          |
-|         | (User-Mode Emulation)                                                    |
+|         | (User-Mode Emulation via PTY)                                            |
 |  [ QEMU Process ] <--- (GDB RSP Protocol: localhost:PORT) ---> [ GDB/MI Process ] |
 |    |           |                                                      |            |
-|    | stdout    | stderr (-strace)                                     | stdout/MI  |
+|    | PTY master| stderr (-strace)                                     | stdout/MI  |
 |    v           v                                                      v            |
 |  [ stdout_q ] [ trace_q ]                                           [ gdb_q ]      |
 +----+-----------+------------------------------------------------------+------------+
@@ -245,23 +246,24 @@ HT-RE features a complete, decoupled interactive execution and debugging suite:
 +------------------------------------------------------------------------------------+
 |                                FRONTEND DASHBOARD                                  |
 |  - CPU Registers Table (live hex values + inline mutator)                          |
-|  - Breakpoints Table (with '*' address normalization)                              |
+|  - Memory & Stack Inspector (paginated hex blocks generated from GDB MI arrays)    |
 |  - GDB Execution Log (decoded octal sequences + clean status events)               |
-|  - Program I/O Terminal (real-time stdout/stderr from target process)              |
+|  - Program I/O Terminal (instant stdout/stderr via PTY terminal simulation)        |
 |  - System Call & Socket Activity Log (live strace hooks)                           |
 +------------------------------------------------------------------------------------+
 ```
 
-### 2. Multi-Architecture QEMU User-Mode Integration
-When debugging foreign-architecture binaries (or running x86 binaries isolated from the host CPU), HT-RE dynamically binds a free TCP port (`get_free_port()`) and starts the appropriate QEMU user-mode emulator:
-- `qemu-x86_64 -g <port> [-strace] <binary>`
-- `qemu-arm -g <port> [-strace] <binary>`
-- `qemu-aarch64 -g <port> [-strace] <binary>`
+### 2. The PTY Block-Buffering Hook
+Normally, the C standard library detects when it's being piped into an application instead of a terminal and automatically switches to **block-buffering** (storing thousands of bytes in memory before flushing). This prevents line-by-line inspection of `printf` output.
+HT-RE fixes this by running QEMU inside an isolated Pseudo-Terminal (`pty.openpty()`), forcing the standard library to line-buffer output instantly.
 
-GDB attaches immediately via `-target-select remote localhost:<port>`. When native execution is selected by unchecking the QEMU box, a prominent modal warning warns the user of direct host execution risks.
-
-### 3. Breakpoint Normalization Engine
-In GDB/MI, specifying raw memory addresses to `-break-insert` requires a leading asterisk `*` (e.g. `-break-insert *0x40008b`), whereas function symbols must not have one (e.g. `-break-insert main`). `format_breakpoint_target()` normalizes all addresses transparently.
+### 3. Memory & Stack Inspector
+- Frontend dispatches `-data-read-memory-bytes` with bounds (e.g. `0x400000 64` or `$sp 64`).
+- Backend catches the `^done,memory=` output on the GDB stdout stream via regex parsing:
+  ```python
+  re.finditer(r'\{begin="([^"]+)",offset="[^"]+",end="([^"]+)",contents="([^"]+)"\}', line)
+  ```
+- The frontend dynamically maps these byte hex arrays into physical 16-byte wide columns containing real mapped addresses, hex digits, and rendered ASCII characters.
 
 ### 4. Background Register Interception & Live Mutation
 - GDB's verbose `info registers` table is intercepted directly in the Python stream reader (`gdb_stream_reader()`) via regex:
@@ -271,27 +273,9 @@ In GDB/MI, specifying raw memory addresses to `-break-insert` requires a leading
 - Register values are stored in `session_info['registers']` and returned as clean JSON dictionaries on every `/api/debug/poll` request, completely suppressing terminal spam.
 - Editing a register value dispatches `-interpreter-exec console "set $<reg> = <val>"`, synchronizing the mutated CPU state immediately.
 
-### 5. Live Program I/O & Syscall Hooks
-- Program output (`printf`, `puts`, `write(1, ...)`) is captured from QEMU's `stdout` pipe and routed to the dedicated **Program I/O (stdout / stderr)** terminal.
-- Kernel syscalls and socket communications (`socket`, `connect`, `sendto`, `recvfrom`) are parsed live from QEMU's `stderr` (`-strace`) stream.
-
-#### Security: Native Execution Warning
-
-`debug.js` and `debug_service.py` enforce a critical safety rule: **QEMU user-mode emulation is enabled by default**.
-
-If the user attempts to uncheck the **"Emulate with QEMU"** checkbox, the frontend triggers a critical confirmation dialog:
-
-> ⚠️ DANGER / CRITICAL WARNING:
->
-> You are unchecking QEMU user-mode emulation.
-> This will execute the target binary directly on your HOST CPU!
-> If the binary contains foreign/malicious instructions or shellcode, it may crash or harm your system.
->
-> Are you absolutely sure you want to run natively?
-
-This dialog blocks execution until the user explicitly confirms (or aborts), preventing accidental native execution of untrusted binaries.
-
-The `use_qemu` flag is stored in `debugState` and preserved across workspace tabs and project switches.
+### 5. Breakpoint Normalization Engine & PIE Hinting
+In GDB/MI, specifying raw memory addresses to `-break-insert` requires a leading asterisk `*` (e.g. `-break-insert *0x40008b`), whereas function symbols must not have one (e.g. `-break-insert main`). `format_breakpoint_target()` normalizes all addresses transparently.
+The frontend implements an explicit PIE-aware boundary check: if the user types a literal breakpoint below `0x100000` (e.g., `0x11c5`), an alert warns them that the Position Independent Executable will be mapped randomly, suggesting they use a symbol offset (`*main+0x7c`).
 
 ---
 
@@ -299,7 +283,7 @@ The `use_qemu` flag is stored in `debugState` and preserved across workspace tab
 
 HT-RE embeds a signature scanner powered by `binwalk`:
 - **Signature Detection:** Scans the binary for embedded file systems (SquashFS, CramFS, JFFS2), compressed archives (gzip, bzip2, LZMA, Zstandard), and bootloader headers.
-- **Recursive Carving:** Supports recursive extraction (`-e --matryoshka`) into an isolated `<binary>.extracted` directory.
+- **Recursive Carving:** Supports recursive extraction (`-e --matryoshka`) into an isolated `_<binary>.extracted` directory.
 - **Extraction File Tree:** Executes `tree -a` against carved artifacts and presents a navigable hierarchical directory tree in the web workspace.
 - **Entropy Analysis:** Executes `binwalk -E` to identify encrypted or compressed payload regions.
 
@@ -520,9 +504,21 @@ Exports complete analysis sessions into structured JSON archives.
 
 ---
 
-## 19. Invasive User Action Tracking Subsystem (`state.js`, `server.py`)
+## 19. Workflow Activity Tracking & Export Subsystem (`state.js`, `server.py`)
 
-When `invasive = true`, HT-RE logs reverse engineering workflows:
-- Tracks tab transitions (`TAB_SWITCH`), clicks (`UI_CLICK`), search terms (`SEARCH_EXECUTE`), compiler runs (`COMPILE_CODE_EXEC`), token conversions, debugger operations (`DEBUG_START`, `DEBUG_STOP`, `DEBUG_STEP_IN`, `DEBUG_STEP_OVER`, `DEBUG_CONTINUE`), register mutations (`DEBUG_SET_REGISTER`), breakpoint modifications, and time spent per view.
-- Events are dispatched asynchronously to `POST /api/track` and appended to `tracking.json`.
-- Export logs anytime using the **🕵 Export Tracking** button in the top bar for workflow analytics and model training.
+When `invasive = true`, HT-RE logs all structural reverse engineering interactions.
+
+### The Purpose of Workflow Tracking
+Unlike telemetry, these logs are never sent back to any master server. They reside locally in your browser memory and are flushed to `tracking.json`. This tool exists to allow analysts to export their exact thought process.
+
+By clicking the **🕵 Export Tracking** button, analysts can supply their exported JSON directly to Large Language Models (like DeepSeek, ChatGPT, or Claude) to ask questions like:
+- *"Given my recent breakpoints and modifications to $rax, did I accidentally bypass the authentication check?"*
+- *"Reconstruct my reverse engineering methodology based on my tab history."*
+
+It also allows peer sharing to educate junior reverse engineers on the logical steps taken to unpack or patch a binary.
+
+### Disabling the Tracker
+To disable the tracker entirely, open `static/js/state.js` and on line 51:
+```javascript
+const invasive = false; // Set to false to disable
+```

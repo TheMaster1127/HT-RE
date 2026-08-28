@@ -9,7 +9,7 @@ from backend.ghidra_service import handle_decompile_single, handle_decompile_bat
 from backend.generic_service import handle_generic_cmd
 from backend.export_service import handle_export
 from backend.patch_service import handle_binpatch, handle_assemble, handle_disassemble_raw, handle_compile, get_patch_history, restore_patch, delete_patch_backup, track_action
-from backend.debug_service import handle_debug_start, handle_debug_cmd, handle_debug_stop, handle_debug_poll, handle_debug_registers, handle_debug_set_reg, handle_trace_run, handle_binwalk
+from backend.debug_service import handle_debug_start, handle_debug_cmd, handle_debug_stop, handle_debug_poll, handle_debug_registers, handle_debug_set_reg, handle_trace_run, handle_binwalk, handle_debug_read_memory
 
 app = Flask(__name__, static_url_path='', static_folder=STATIC_FOLDER)
 
@@ -140,6 +140,10 @@ def api_debug_registers():
 @app.route('/api/debug/set_reg', methods=['POST'])
 def api_debug_set_reg():
     return jsonify(handle_debug_set_reg(request.json))
+
+@app.route('/api/debug/read_memory', methods=['POST'])
+def api_debug_read_memory():
+    return jsonify(handle_debug_read_memory(request.json))
 
 @app.route('/api/debug/trace', methods=['POST'])
 def api_debug_trace():

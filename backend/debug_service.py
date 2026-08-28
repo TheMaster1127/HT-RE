@@ -6,6 +6,7 @@ import socket
 import re
 import shutil
 import time
+import pty
 from backend.utils import run_cmd, validate
 
 debug_sessions = {}
@@ -24,6 +25,19 @@ def gdb_stream_reader(pipe, out_queue, session_dict=None):
             if not line:
                 break
 
+            # Handle Memory Reads Interception
+            if line.startswith('^done,memory='):
+                blocks = []
+                for m in re.finditer(r'\{begin="([^"]+)",offset="[^"]+",end="([^"]+)",contents="([^"]+)"\}', line):
+                    blocks.append({
+                        'begin': m.group(1),
+                        'end': m.group(2),
+                        'contents': m.group(3)
+                    })
+                if blocks and session_dict is not None:
+                    session_dict['memory_reads'].append(blocks)
+                continue  # Suppress massive hex dumps from spamming the GDB execution log terminal
+
             # Live backend register parsing from GDB output stream
             if session_dict is not None and '~"' in line:
                 clean = line.replace('\\n', '').replace('\\t', ' ')
@@ -32,7 +46,6 @@ def gdb_stream_reader(pipe, out_queue, session_dict=None):
                     reg_name = m.group(1).lower()
                     reg_val = m.group(2)
                     session_dict['registers'][reg_name] = reg_val
-                    # Suppress raw info registers output from polluting the main log
                     continue
 
             out_queue.put(line)
@@ -52,6 +65,27 @@ def pipe_reader(pipe, target_queue):
         pass
     finally:
         try: pipe.close()
+        except: pass
+
+def pty_stream_reader(fd, out_queue):
+    # Specialized reader for PTY to fix C stdout buffering issues
+    buffer = ""
+    try:
+        while True:
+            chunk = os.read(fd, 1024)
+            if not chunk:
+                break
+            buffer += chunk.decode('utf-8', errors='replace')
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
+                out_queue.put(line + '\n')
+    except OSError: 
+        # Throws EIO when the PTY slave closes (program exits)
+        pass
+    finally:
+        if buffer:
+            out_queue.put(buffer)
+        try: os.close(fd)
         except: pass
 
 def get_qemu_binary(arch):
@@ -114,15 +148,21 @@ def handle_debug_start(data):
         qemu_cmd.append(binary_path)
 
         try:
-            # Capture stdout for program terminal output and stderr for -strace syscalls
+            # We open a PTY so the guest C library registers a real terminal.
+            # This fixes `printf` being block-buffered so we can see lines instantly!
+            master_fd, slave_fd = pty.openpty()
+
             qemu_proc = subprocess.Popen(
                 qemu_cmd, 
-                stdout=subprocess.PIPE, 
+                stdout=slave_fd, 
                 stderr=subprocess.PIPE, 
+                stdin=subprocess.DEVNULL,
                 text=True, 
                 bufsize=1
             )
-            qemu_stdout_thread = threading.Thread(target=pipe_reader, args=(qemu_proc.stdout, stdout_queue), daemon=True)
+            os.close(slave_fd) # Close our copy of the slave
+
+            qemu_stdout_thread = threading.Thread(target=pty_stream_reader, args=(master_fd, stdout_queue), daemon=True)
             qemu_stdout_thread.start()
 
             qemu_trace_thread = threading.Thread(target=pipe_reader, args=(qemu_proc.stderr, trace_queue), daemon=True)
@@ -156,6 +196,7 @@ def handle_debug_start(data):
             'stdout_queue': stdout_queue,
             'trace_queue': trace_queue,
             'registers': {},
+            'memory_reads': [],
             'arch': arch,
             'use_qemu': use_qemu
         }
@@ -176,7 +217,7 @@ def handle_debug_start(data):
             if fmt_bp:
                 gdb_proc.stdin.write(f"-break-insert {fmt_bp}\n")
 
-        # Initial register query to immediately populate UI
+        # Initial register query
         gdb_proc.stdin.write('-interpreter-exec console "info registers"\n')
         gdb_proc.stdin.flush()
 
@@ -213,7 +254,7 @@ def handle_debug_poll(data):
     binary_path = data.get('binary_path')
     session = debug_sessions.get(binary_path)
     if not session:
-        return {'lines': [], 'trace_lines': [], 'stdout_lines': [], 'registers': {}, 'running': False}
+        return {'lines': [], 'trace_lines': [], 'stdout_lines': [], 'registers': {}, 'memory_reads': [], 'running': False}
     
     lines = []
     try:
@@ -236,12 +277,16 @@ def handle_debug_poll(data):
     except queue.Empty:
         pass
     
+    mem_reads = session.get('memory_reads', [])
+    session['memory_reads'] = []
+
     running = session['gdb_proc'].poll() is None
     return {
         'lines': lines, 
         'trace_lines': trace_lines, 
         'stdout_lines': stdout_lines,
         'registers': session['registers'], 
+        'memory_reads': mem_reads,
         'running': running
     }
 
@@ -271,6 +316,22 @@ def handle_debug_set_reg(data):
         cmd = f'-interpreter-exec console "set ${reg} = {val}"'
         session['gdb_proc'].stdin.write(cmd + '\n')
         session['gdb_proc'].stdin.write('-interpreter-exec console "info registers"\n')
+        session['gdb_proc'].stdin.flush()
+        return {'status': 'ok'}
+    except Exception as e:
+        return {'error': str(e)}
+
+def handle_debug_read_memory(data):
+    binary_path = data.get('binary_path')
+    address = data.get('address')
+    count = data.get('count', 64)
+    session = debug_sessions.get(binary_path)
+    if not session or session['gdb_proc'].poll() is not None:
+        return {'error': 'Debugger session not active.'}
+    
+    try:
+        cmd = f'-data-read-memory-bytes "{address}" {count}'
+        session['gdb_proc'].stdin.write(cmd + '\n')
         session['gdb_proc'].stdin.flush()
         return {'status': 'ok'}
     except Exception as e:
@@ -345,7 +406,11 @@ def handle_binwalk(data):
     out, err, _ = run_cmd(cmd)
     
     tree_out = ""
-    extracted_dir = f"{binary_path}.extracted"
+    
+    dir_name = os.path.dirname(binary_path)
+    base_name = os.path.basename(binary_path)
+    extracted_dir = os.path.join(dir_name, f"_{base_name}.extracted")
+    
     if extract and os.path.exists(extracted_dir):
         t_out, _, _ = run_cmd(f'tree -a "{extracted_dir}"')
         tree_out = t_out or "Directory extracted, tree empty."

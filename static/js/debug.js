@@ -3,6 +3,9 @@ let activeBreakpoints = [];
 let currentRegisterValues = {};
 let terminalFontSize = 14;
 
+let lastMemReadBegin = null;
+let lastMemReadCount = 64;
+
 function showDebugUI() { 
     updateTabs('debug');
 }
@@ -56,26 +59,35 @@ function addBreakpoint() {
     let val = formatBreakpointInput(input.value);
     if (!val) return;
     
+    // Automatic PIE Detection Hint!
+    if (val.startsWith('0x')) {
+        let num = parseInt(val, 16);
+        if (num > 0 && num < 0x100000) {
+            console.warn("PIE Warning: " + val + " is a very low address. It might be a relative offset.");
+            alert(`Warning: ${val} is a very low address.\n\nIf this binary is PIE (Position Independent), breaking here will fail because the OS loads it at a random base address (e.g. 0x4000000000).\n\nTip: Break at a function offset instead, like:  *main+0x7c`);
+        }
+    }
+
     if (!activeBreakpoints.includes(val)) {
         activeBreakpoints.push(val);
         renderBreakpoints();
-        trackAction("DEBUG_ADD_BREAKPOINT", { target: val });
+        if (typeof trackAction === 'function') trackAction("DEBUG_ADD_BREAKPOINT", { target: val });
         if (debugPollInterval) {
             sendGdbCmd(`-break-insert ${val}`);
         }
     }
     input.value = '';
-    saveCurrentProjectState();
+    if (typeof saveCurrentProjectState === 'function') saveCurrentProjectState();
 }
 
 function removeBreakpoint(val) {
     activeBreakpoints = activeBreakpoints.filter(bp => bp !== val);
     renderBreakpoints();
-    trackAction("DEBUG_REMOVE_BREAKPOINT", { target: val });
+    if (typeof trackAction === 'function') trackAction("DEBUG_REMOVE_BREAKPOINT", { target: val });
     if (debugPollInterval) {
         sendGdbCmd(`-break-delete ${val}`);
     }
-    saveCurrentProjectState();
+    if (typeof saveCurrentProjectState === 'function') saveCurrentProjectState();
 }
 
 function renderBreakpoints() {
@@ -143,10 +155,10 @@ async function startDebugger() {
     
     const consoleDiv = document.getElementById('dbg-console');
     const stdoutDiv = document.getElementById('dbg-stdout-out');
-    consoleDiv.innerHTML = `<div>${getTimestamp()}<span style="color:#ffeb73;">[*] Initializing GDB ${useQemu ? '+ QEMU (' + arch + ')' : '(Native Host)'}...</span></div>`;
+    consoleDiv.innerHTML = `<div>${getTimestamp()}<span style="color:#ffeb73;">[*] Initializing GDB ${useQemu ? '+ QEMU PTY (' + arch + ')' : '(Native Host)'}...</span></div>`;
     stdoutDiv.innerHTML = `<div>${getTimestamp()}<span style="color:#666;">Waiting for program output...</span></div>`;
 
-    trackAction("DEBUG_START", { use_qemu: useQemu, arch: arch, breakpoints: activeBreakpoints });
+    if (typeof trackAction === 'function') trackAction("DEBUG_START", { use_qemu: useQemu, arch: arch, breakpoints: activeBreakpoints });
     
     const res = await fetch(`${API}/debug/start`, {
         method: 'POST',
@@ -177,7 +189,7 @@ async function startDebugger() {
 
 async function stopDebugger() {
     if (!binaryPath) return;
-    trackAction("DEBUG_STOP");
+    if (typeof trackAction === 'function') trackAction("DEBUG_STOP");
     await fetch(`${API}/debug/stop`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -195,13 +207,12 @@ async function sendGdbCmd(cmd = null) {
     const inputCmd = cmd || document.getElementById('dbg-cmd-input').value.trim();
     if (!inputCmd) return;
     
-    // Explicit tracking for actions
     let actionType = "DEBUG_CMD";
     if (inputCmd === "-exec-step-instruction") actionType = "DEBUG_STEP_IN";
     else if (inputCmd === "-exec-next-instruction") actionType = "DEBUG_STEP_OVER";
     else if (inputCmd === "-exec-continue") actionType = "DEBUG_CONTINUE";
 
-    trackAction(actionType, { cmd: inputCmd });
+    if (typeof trackAction === 'function') trackAction(actionType, { cmd: inputCmd });
     
     const consoleDiv = document.getElementById('dbg-console');
     consoleDiv.innerHTML += `<div>${getTimestamp()}<span style="color:#888;">&gt; ${escapeHTML(inputCmd)}</span></div>`;
@@ -248,7 +259,7 @@ async function setRegisterValue() {
         val = '0x' + val;
     }
 
-    trackAction("DEBUG_SET_REGISTER", { reg: reg, val: val });
+    if (typeof trackAction === 'function') trackAction("DEBUG_SET_REGISTER", { reg: reg, val: val });
     const res = await fetch(`${API}/debug/set_reg`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -262,14 +273,14 @@ async function setRegisterValue() {
     }
 }
 
-// Decode GDB octal escape characters and clean MI spam
 function cleanGdbString(str) {
     if (!str) return '';
     return str
         .replace(/\\([0-7]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
         .replace(/\\n/g, '\n')
         .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"');
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
 }
 
 function filterGdbMiOutput(raw) {
@@ -386,6 +397,47 @@ function renderRegisterGrid() {
     });
 }
 
+// --- MEMORY AND STACK INSPECTOR LOGIC ---
+async function readMemory() {
+    if (!binaryPath) return;
+    const addr = document.getElementById('dbg-mem-addr').value.trim();
+    const count = parseInt(document.getElementById('dbg-mem-count').value.trim()) || 64;
+    lastMemReadCount = count;
+
+    if (!addr) return alert("Please enter an address or register (e.g., $sp, main, *main+0x10).");
+    
+    if (typeof trackAction === 'function') trackAction("DEBUG_READ_MEMORY", { address: addr, count: count });
+    
+    const res = await fetch(`${API}/debug/read_memory`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ binary_path: binaryPath, address: addr, count: count })
+    });
+    const data = await res.json();
+    if (data.error) alert(data.error);
+}
+
+async function readStack() {
+    document.getElementById('dbg-mem-addr').value = "$sp";
+    await readMemory();
+}
+
+async function shiftMemory(direction) {
+    if (!lastMemReadBegin) return alert("Please read memory or stack first before scrolling up/down.");
+    const count = parseInt(document.getElementById('dbg-mem-count').value.trim()) || 64;
+    lastMemReadCount = count;
+    
+    let newAddr;
+    if (direction > 0) {
+        newAddr = lastMemReadBegin + BigInt(count);
+    } else {
+        newAddr = lastMemReadBegin - BigInt(count);
+    }
+    
+    document.getElementById('dbg-mem-addr').value = '0x' + newAddr.toString(16);
+    await readMemory();
+}
+
 async function pollGdb() {
     if (!binaryPath) return;
     const res = await fetch(`${API}/debug/poll`, {
@@ -398,6 +450,18 @@ async function pollGdb() {
     const consoleDiv = document.getElementById('dbg-console');
     if (data.lines && data.lines.length > 0) {
         data.lines.forEach(line => {
+            // Check for native target stdout (when Native Host Execution is selected)
+            if (line.startsWith('@')) {
+                let clean = cleanGdbString(line.replace(/^@"/, '').replace(/"\n?$/, ''));
+                const stdoutDiv = document.getElementById('dbg-stdout-out');
+                if (stdoutDiv.innerText.includes("No program output yet.") || stdoutDiv.innerText.includes("Waiting for program output...")) {
+                    stdoutDiv.innerHTML = "";
+                }
+                stdoutDiv.innerHTML += `<div>${getTimestamp()}${escapeHTML(clean)}</div>`;
+                stdoutDiv.scrollTop = stdoutDiv.scrollHeight;
+                return;
+            }
+
             const filtered = filterGdbMiOutput(line);
             if (filtered) {
                 consoleDiv.innerHTML += `<div>${getTimestamp()}${filtered}</div>`;
@@ -412,7 +476,52 @@ async function pollGdb() {
         renderRegisterGrid();
     }
 
-    // Live Target Program Output (stdout/stderr)
+    // Memory Reads Interception & Hex Dump Generator
+    if (data.memory_reads && data.memory_reads.length > 0) {
+        const memOut = document.getElementById('dbg-mem-out');
+        if (memOut.innerText.includes("No memory read yet.")) memOut.innerHTML = '';
+        
+        data.memory_reads.forEach(readReq => {
+            let html = '';
+            readReq.forEach(block => {
+                html += `<div style="color:var(--primary); font-weight:bold; margin-bottom:5px;">Memory at ${block.begin} to ${block.end}</div>`;
+                lastMemReadBegin = BigInt(block.begin); // Update for shift feature
+
+                let bytes = block.contents.match(/.{1,2}/g) || [];
+                
+                if (bytes.length === 0) {
+                    html += `<div style="color:#ff3333;">Could not read memory at this location.</div>`;
+                    return;
+                }
+
+                let startAddrStr = block.begin.replace(/^0x/, '');
+                let startAddr = BigInt('0x' + (startAddrStr || '0'));
+                
+                let rowHtml = { addr: '', hex: '' };
+                let ascii = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    if (i > 0 && i % 16 === 0) {
+                        html += `<div style="display:flex; justify-content:space-between; width: 100%; white-space:pre;"><span style="color:#ff3333;">${rowHtml.addr}</span><span style="color:#0f0;">${rowHtml.hex.padEnd(48, ' ')}</span><span style="color:#55aaff;">${escapeHTML(ascii).padEnd(16, ' ')}</span></div>`;
+                        let currentAddr = (startAddr + BigInt(i)).toString(16);
+                        rowHtml = { addr: '0x' + currentAddr.padStart(12, '0') + ':', hex: '' };
+                        ascii = '';
+                    } else if (i === 0) {
+                        let currentAddr = startAddr.toString(16);
+                        rowHtml = { addr: '0x' + currentAddr.padStart(12, '0') + ':', hex: '' };
+                    }
+                    rowHtml.hex += bytes[i] + ' ';
+                    let code = parseInt(bytes[i], 16);
+                    ascii += (code >= 32 && code <= 126) ? String.fromCharCode(code) : '.';
+                }
+                if (rowHtml.hex) {
+                    html += `<div style="display:flex; justify-content:space-between; width: 100%; white-space:pre;"><span style="color:#ff3333;">${rowHtml.addr}</span><span style="color:#0f0;">${rowHtml.hex.padEnd(48, ' ')}</span><span style="color:#55aaff;">${escapeHTML(ascii).padEnd(16, ' ')}</span></div>`;
+                }
+            });
+            memOut.insertAdjacentHTML('afterbegin', html + '<hr style="border-color:#333; margin: 10px 0;">');
+        });
+    }
+
+    // Live Target Program Output (stdout/stderr) from PTY / QEMU
     if (data.stdout_lines && data.stdout_lines.length > 0) {
         const stdoutDiv = document.getElementById('dbg-stdout-out');
         if (stdoutDiv.innerText.includes("No program output yet.") || stdoutDiv.innerText.includes("Waiting for program output...")) {
@@ -465,7 +574,7 @@ async function runStandaloneTrace() {
 
     document.getElementById('dbg-strace-out').innerText = `Running trace with ${useQemu ? 'QEMU (' + arch + ')' : 'native strace'}...`;
     document.getElementById('dbg-strace-net').innerText = "Waiting for socket / network activity...";
-    trackAction("DEBUG_TRACE_RUN", { use_qemu: useQemu, syscalls: traceSyscalls, network: traceNetwork });
+    if (typeof trackAction === 'function') trackAction("DEBUG_TRACE_RUN", { use_qemu: useQemu, syscalls: traceSyscalls, network: traceNetwork });
 
     const res = await fetch(`${API}/debug/trace`, {
         method: 'POST',
@@ -502,7 +611,7 @@ async function runBinwalk() {
     
     document.getElementById('dbg-bw-out').innerText = "Running binwalk signature scan...";
     document.getElementById('dbg-bw-tree').innerText = "";
-    trackAction("DEBUG_BINWALK_RUN", { extract, entropy });
+    if (typeof trackAction === 'function') trackAction("DEBUG_BINWALK_RUN", { extract, entropy });
     
     const res = await fetch(`${API}/debug/binwalk`, {
         method: 'POST',
